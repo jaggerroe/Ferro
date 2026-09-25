@@ -9,18 +9,23 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#101214',
+    background: '#F4F4F2',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#E6E6E2',
+    textSecondary: '#5F656C',
+    accent: '#D9531C',
+    onAccent: '#FFFFFF',
   },
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#F2F3F5',
+    background: '#0C0D0F',
+    backgroundElement: '#17191C',
+    backgroundSelected: '#23262A',
+    textSecondary: '#9BA1A8',
+    // "Forged iron" orange — Ferro's accent color
+    accent: '#FF6B2C',
+    onAccent: '#140800',
   },
 } as const;
 
