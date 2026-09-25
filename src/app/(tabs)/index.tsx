@@ -1,3 +1,4 @@
+import { router } from 'expo-router';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { PlaceholderCard } from '@/components/placeholder-card';
@@ -26,6 +27,15 @@ export default function WorkoutScreen() {
           Start empty workout
         </ThemedText>
       </Pressable>
+      <Pressable
+        onPress={() => router.push('/exercises')}
+        accessibilityRole="button"
+        style={({ pressed }) => [
+          styles.secondaryButton,
+          { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.8 : 1 },
+        ]}>
+        <ThemedText style={styles.secondaryLabel}>Browse exercises</ThemedText>
+      </Pressable>
     </Screen>
   );
 }
@@ -39,5 +49,14 @@ const styles = StyleSheet.create({
   startLabel: {
     fontSize: 17,
     fontWeight: 800,
+  },
+  secondaryButton: {
+    borderRadius: 14,
+    paddingVertical: Spacing.three,
+    alignItems: 'center',
+  },
+  secondaryLabel: {
+    fontSize: 17,
+    fontWeight: 700,
   },
 });

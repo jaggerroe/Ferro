@@ -18,6 +18,7 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="profile" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="exercises" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>
   );
