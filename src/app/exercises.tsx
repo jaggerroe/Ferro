@@ -1,24 +1,57 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useSQLiteContext } from 'expo-sqlite';
 import { useMemo, useState } from 'react';
-import { Pressable, SectionList, StyleSheet, TextInput, View } from 'react-native';
+import { Alert, Pressable, SectionList, StyleSheet, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Chip } from '@/components/chip';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
-import { EXERCISES, type Exercise } from '@/data/exercises';
+import { type Exercise } from '@/data/exercises';
+import { useAllExercises } from '@/lib/custom-exercises';
 import { filterExercises, groupExercises, SORT_OPTIONS, type SortMode } from '@/lib/exercise-sort';
+import { addExercisesToWorkout } from '@/lib/workouts';
 import { useTheme } from '@/hooks/use-theme';
 
+/**
+ * The exercise library. Opened two ways:
+ *  - from "Browse exercises": just a list to look through
+ *  - from a workout's "Add exercises" (pick=1): tap to select, then "Add"
+ */
 export default function ExerciseLibraryScreen() {
   const theme = useTheme();
+  const db = useSQLiteContext();
+  const exercises = useAllExercises();
+  const params = useLocalSearchParams<{ pick?: string; workoutId?: string }>();
+  const picking = params.pick === '1' && !!params.workoutId;
+
+  // Exercise ids picked so far, in the order they were tapped.
+  const [picked, setPicked] = useState<string[]>([]);
+  const [adding, setAdding] = useState(false);
+
+  function togglePicked(id: string) {
+    setPicked((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  }
+
+  async function addPicked() {
+    if (!params.workoutId || picked.length === 0 || adding) return;
+    setAdding(true);
+    try {
+      await addExercisesToWorkout(db, params.workoutId, picked);
+      router.back();
+    } catch (err) {
+      console.warn('Could not add exercises', err);
+      Alert.alert("Couldn't add exercises", 'Something went wrong. Try again.');
+      setAdding(false);
+    }
+  }
 
   // "State": values this screen remembers. Changing them re-renders the screen.
   const [query, setQuery] = useState('');
   const [sortMode, setSortMode] = useState<SortMode>('muscle');
 
   // Recompute the sections only when the search text or sort mode changes.
-  const filtered = useMemo(() => filterExercises(EXERCISES, query), [query]);
+  const filtered = useMemo(() => filterExercises(exercises, query), [exercises, query]);
   const sections = useMemo(() => groupExercises(filtered, sortMode), [filtered, sortMode]);
 
   /** The grey line under each name shows whatever the list ISN'T grouped by. */
@@ -31,19 +64,37 @@ export default function ExerciseLibraryScreen() {
   return (
     <SafeAreaView edges={['top']} style={[styles.safeArea, { backgroundColor: theme.background }]}>
       <View style={styles.topBar}>
-        <ThemedText style={styles.heading}>Exercises</ThemedText>
-        <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
-          <ThemedText type="smallBold" themeColor="accent" style={styles.done}>
-            Done
-          </ThemedText>
-        </Pressable>
+        <ThemedText style={styles.heading}>{picking ? 'Add exercises' : 'Exercises'}</ThemedText>
+        <View style={styles.barActions}>
+          <Pressable
+            onPress={() => router.push('/new-exercise')}
+            accessibilityRole="button"
+            accessibilityLabel="Create a new exercise"
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.newButton,
+              { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 },
+            ]}>
+            <ThemedText type="smallBold" style={{ color: theme.onAccent }}>
+              + New
+            </ThemedText>
+          </Pressable>
+          <Pressable onPress={() => router.back()} accessibilityRole="button" hitSlop={8}>
+            <ThemedText
+              type="smallBold"
+              themeColor={picking ? 'textSecondary' : 'accent'}
+              style={styles.done}>
+              {picking ? 'Cancel' : 'Done'}
+            </ThemedText>
+          </Pressable>
+        </View>
       </View>
 
       <View style={styles.controls}>
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder={`Search ${EXERCISES.length} exercises`}
+          placeholder={`Search ${exercises.length} exercises`}
           placeholderTextColor={theme.textSecondary}
           autoCorrect={false}
           clearButtonMode="while-editing"
@@ -81,21 +132,83 @@ export default function ExerciseLibraryScreen() {
             </ThemedText>
           </View>
         )}
-        renderItem={({ item }) => (
-          <View style={[styles.row, { borderBottomColor: theme.backgroundSelected }]}>
-            <ThemedText style={styles.name}>{item.name}</ThemedText>
+        renderItem={({ item }) => {
+          const order = picked.indexOf(item.id);
+          const selected = order !== -1;
+          return (
+          <Pressable
+            disabled={!picking}
+            onPress={() => togglePicked(item.id)}
+            accessibilityRole={picking ? 'checkbox' : undefined}
+            accessibilityState={picking ? { checked: selected } : undefined}
+            style={[
+              styles.row,
+              { borderBottomColor: theme.backgroundSelected },
+              selected && { backgroundColor: `${theme.accent}22` },
+            ]}>
+            <View style={styles.rowText}>
+            <View style={styles.nameRow}>
+              <ThemedText style={styles.name}>{item.name}</ThemedText>
+              {item.custom ? (
+                <View style={[styles.badge, { backgroundColor: theme.backgroundSelected }]}>
+                  <ThemedText type="smallBold" themeColor="textSecondary" style={styles.badgeText}>
+                    Custom
+                  </ThemedText>
+                </View>
+              ) : null}
+            </View>
             <ThemedText type="small" themeColor="textSecondary">
               {detailFor(item)}
               {item.secondary.length > 0 ? `  ·  also ${item.secondary.join(', ')}` : ''}
             </ThemedText>
-          </View>
-        )}
+            </View>
+            {picking ? (
+              <View
+                style={[
+                  styles.pickCircle,
+                  selected
+                    ? { backgroundColor: theme.accent, borderColor: theme.accent }
+                    : { borderColor: theme.textSecondary },
+                ]}>
+                {selected ? (
+                  <ThemedText type="smallBold" style={[styles.pickNumber, { color: theme.onAccent }]}>
+                    {order + 1}
+                  </ThemedText>
+                ) : null}
+              </View>
+            ) : null}
+          </Pressable>
+          );
+        }}
         ListEmptyComponent={
-          <ThemedText themeColor="textSecondary" style={styles.empty}>
-            No exercises match “{query}”.
-          </ThemedText>
+          <View style={styles.empty}>
+            <ThemedText themeColor="textSecondary" style={styles.emptyText}>
+              No exercises match “{query}”.
+            </ThemedText>
+            <Pressable onPress={() => router.push('/new-exercise')} accessibilityRole="button" hitSlop={8}>
+              <ThemedText type="smallBold" themeColor="accent">
+                Create it as a new exercise
+              </ThemedText>
+            </Pressable>
+          </View>
         }
       />
+
+      {picking && picked.length > 0 ? (
+        <SafeAreaView edges={['bottom']} style={[styles.addBar, { backgroundColor: theme.background }]}>
+          <Pressable
+            onPress={addPicked}
+            accessibilityRole="button"
+            style={({ pressed }) => [
+              styles.addButton,
+              { backgroundColor: theme.accent, opacity: pressed || adding ? 0.8 : 1 },
+            ]}>
+            <ThemedText style={[styles.addLabel, { color: theme.onAccent }]}>
+              Add {picked.length} {picked.length === 1 ? 'exercise' : 'exercises'}
+            </ThemedText>
+          </Pressable>
+        </SafeAreaView>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -111,6 +224,11 @@ const styles = StyleSheet.create({
   },
   heading: { fontSize: 20, lineHeight: 26, fontWeight: 800 },
   done: { fontSize: 16 },
+  barActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  newButton: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  badge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  badgeText: { fontSize: 11, lineHeight: 16, textTransform: 'uppercase', letterSpacing: 0.5 },
   controls: { paddingHorizontal: Spacing.three, gap: Spacing.three, paddingBottom: Spacing.two },
   search: {
     borderRadius: 12,
@@ -130,11 +248,27 @@ const styles = StyleSheet.create({
   },
   sectionTitle: { textTransform: 'uppercase', letterSpacing: 1, fontSize: 12 },
   row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
     paddingHorizontal: Spacing.three,
     paddingVertical: 12,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    gap: 2,
   },
+  rowText: { flex: 1, gap: 2 },
+  pickCircle: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    borderWidth: 1.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickNumber: { fontSize: 13, lineHeight: 16 },
+  addBar: { paddingHorizontal: Spacing.three, paddingTop: Spacing.two },
+  addButton: { borderRadius: 14, paddingVertical: Spacing.three, alignItems: 'center', marginBottom: Spacing.two },
+  addLabel: { fontSize: 17, fontWeight: 800 },
   name: { fontSize: 17, lineHeight: 22, fontWeight: 600 },
-  empty: { textAlign: 'center', padding: Spacing.five },
+  empty: { alignItems: 'center', padding: Spacing.five, gap: Spacing.two },
+  emptyText: { textAlign: 'center' },
 });

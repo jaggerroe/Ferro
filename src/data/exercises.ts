@@ -46,10 +46,24 @@ export type Exercise = {
   secondary: MuscleGroup[];
   equipment: Equipment;
   kind: ExerciseKind;
+  /** True for exercises the user made themselves. */
+  custom?: boolean;
 };
 
+/** Labels for how each kind of exercise gets logged. */
+export const KIND_LABELS: Record<ExerciseKind, string> = {
+  strength: 'Weight × reps',
+  bodyweight: 'Reps only',
+  cardio: 'Time & distance',
+};
+
+/** The logging type Ferro guesses from the muscle group and equipment. */
+export function defaultKind(muscle: MuscleGroup, equipment: Equipment): ExerciseKind {
+  return muscle === 'Cardio' ? 'cardio' : equipment === 'Bodyweight' ? 'bodyweight' : 'strength';
+}
+
 /** Turns "Bench Press" into "bench-press" so every exercise has a stable id. */
-function slug(name: string) {
+export function slug(name: string) {
   return name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -63,8 +77,7 @@ function ex(
   equipment: Equipment,
   secondary: MuscleGroup[] = [],
 ): Exercise {
-  const kind: ExerciseKind =
-    muscle === 'Cardio' ? 'cardio' : equipment === 'Bodyweight' ? 'bodyweight' : 'strength';
+  const kind = defaultKind(muscle, equipment);
   return { id: slug(name), name, muscle, secondary, equipment, kind };
 }
 

@@ -8,24 +8,27 @@ import '@/global.css';
 import { Platform } from 'react-native';
 
 export const Colors = {
+  // Ferro "Steel & Indigo": cool blue-greys with a blue-violet accent.
+  // Text colors are contrast-checked against the backgrounds they sit on.
   light: {
-    text: '#101214',
-    background: '#F4F4F2',
+    text: '#121624',
+    background: '#F4F6FB',
     backgroundElement: '#FFFFFF',
-    backgroundSelected: '#E6E6E2',
-    textSecondary: '#5F656C',
-    accent: '#D9531C',
+    backgroundSelected: '#E3E7F1',
+    textSecondary: '#5C6478',
+    accent: '#4A55D4',
     onAccent: '#FFFFFF',
+    danger: '#C23434',
   },
   dark: {
-    text: '#F2F3F5',
-    background: '#0C0D0F',
-    backgroundElement: '#17191C',
-    backgroundSelected: '#23262A',
-    textSecondary: '#9BA1A8',
-    // "Forged iron" orange — Ferro's accent color
-    accent: '#FF6B2C',
-    onAccent: '#140800',
+    text: '#EDF1FA',
+    background: '#0C111D',
+    backgroundElement: '#151C2C',
+    backgroundSelected: '#212A3E',
+    textSecondary: '#8E9AB2',
+    accent: '#6875F7',
+    onAccent: '#FFFFFF',
+    danger: '#FF6B6B',
   },
 } as const;
 
