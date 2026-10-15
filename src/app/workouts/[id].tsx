@@ -10,6 +10,7 @@ import { Spacing } from '@/constants/theme';
 import type { ExerciseKind } from '@/data/exercises';
 import { useAllExercises } from '@/lib/custom-exercises';
 import { dayLabel, shortDuration, timeLabel, useWorkoutDetail, volumeLabel } from '@/lib/history';
+import { saveWorkoutAsRoutine } from '@/lib/routines';
 import { discardWorkout, METERS_PER_MILE, type SetRow } from '@/lib/workouts';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -27,6 +28,18 @@ export default function WorkoutDetailScreen() {
     const volume = sets.reduce((sum, s) => sum + (s.weight ?? 0) * (s.reps ?? 0), 0);
     return { sets: sets.length, volume };
   }, [workout]);
+
+  /** Turns this workout into a routine, then opens it so you can rename or tweak it. */
+  async function saveAsRoutine() {
+    if (!workout) return;
+    try {
+      const routineId = await saveWorkoutAsRoutine(db, workout.id, workout.name || 'Workout');
+      router.push({ pathname: '/routine/[id]', params: { id: routineId } });
+    } catch (err) {
+      console.warn('Could not save routine', err);
+      Alert.alert("Couldn't save routine", 'Something went wrong. Try again.');
+    }
+  }
 
   function confirmDelete() {
     if (!workout) return;
@@ -132,6 +145,17 @@ export default function WorkoutDetailScreen() {
           );
         })}
 
+        {workout.blocks.length > 0 ? (
+          <Pressable
+            onPress={saveAsRoutine}
+            accessibilityRole="button"
+            style={({ pressed }) => [styles.saveRoutine, { borderColor: theme.accent, opacity: pressed ? 0.7 : 1 }]}>
+            <ThemedText type="smallBold" themeColor="accent" style={styles.saveRoutineLabel}>
+              Save as routine
+            </ThemedText>
+          </Pressable>
+        ) : null}
+
         <Pressable onPress={confirmDelete} accessibilityRole="button" hitSlop={8} style={styles.delete}>
           <ThemedText type="smallBold" themeColor="danger">
             Delete workout
@@ -212,5 +236,7 @@ const styles = StyleSheet.create({
   setValue: { flex: 1, fontWeight: 600, fontVariant: ['tabular-nums'] },
   bestTag: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
   bestText: { fontSize: 12, lineHeight: 16 },
+  saveRoutine: { borderWidth: 1.5, borderRadius: 14, paddingVertical: Spacing.three, alignItems: 'center' },
+  saveRoutineLabel: { fontSize: 16 },
   delete: { alignItems: 'center', paddingVertical: Spacing.three },
 });

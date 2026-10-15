@@ -10,20 +10,21 @@ import { Spacing } from '@/constants/theme';
 import { type Exercise } from '@/data/exercises';
 import { useAllExercises } from '@/lib/custom-exercises';
 import { filterExercises, groupExercises, SORT_OPTIONS, type SortMode } from '@/lib/exercise-sort';
+import { addExercisesToRoutine } from '@/lib/routines';
 import { addExercisesToWorkout } from '@/lib/workouts';
 import { useTheme } from '@/hooks/use-theme';
 
 /**
  * The exercise library. Opened two ways:
  *  - from "Browse exercises": just a list to look through
- *  - from a workout's "Add exercises" (pick=1): tap to select, then "Add"
+ *  - from a workout's or routine's "Add exercises" (pick=1): tap to select, then "Add"
  */
 export default function ExerciseLibraryScreen() {
   const theme = useTheme();
   const db = useSQLiteContext();
   const exercises = useAllExercises();
-  const params = useLocalSearchParams<{ pick?: string; workoutId?: string }>();
-  const picking = params.pick === '1' && !!params.workoutId;
+  const params = useLocalSearchParams<{ pick?: string; workoutId?: string; routineId?: string }>();
+  const picking = params.pick === '1' && (!!params.workoutId || !!params.routineId);
 
   // Exercise ids picked so far, in the order they were tapped.
   const [picked, setPicked] = useState<string[]>([]);
@@ -34,10 +35,11 @@ export default function ExerciseLibraryScreen() {
   }
 
   async function addPicked() {
-    if (!params.workoutId || picked.length === 0 || adding) return;
+    if (!picking || picked.length === 0 || adding) return;
     setAdding(true);
     try {
-      await addExercisesToWorkout(db, params.workoutId, picked);
+      if (params.workoutId) await addExercisesToWorkout(db, params.workoutId, picked);
+      else if (params.routineId) await addExercisesToRoutine(db, params.routineId, picked);
       router.back();
     } catch (err) {
       console.warn('Could not add exercises', err);

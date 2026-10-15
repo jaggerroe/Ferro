@@ -31,6 +31,7 @@ export default function RootLayout() {
           <Stack.Screen name="workout" options={{ presentation: 'fullScreenModal', gestureEnabled: false }} />
           <Stack.Screen name="workouts/[id]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="exercise-progress/[id]" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="routine/[id]" options={{ presentation: 'modal' }} />
         </Stack>
       </SQLiteProvider>
     </ThemeProvider>

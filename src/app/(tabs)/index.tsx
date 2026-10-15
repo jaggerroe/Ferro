@@ -1,21 +1,27 @@
 import { router } from 'expo-router';
 import { useSQLiteContext } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet } from 'react-native';
+import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { PlaceholderCard } from '@/components/placeholder-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
-import { formatDuration, startWorkout, useActiveWorkout } from '@/lib/workouts';
+import { useStartRoutine } from '@/hooks/use-start-routine';
 import { useTheme } from '@/hooks/use-theme';
+import { useRoutines } from '@/lib/routines';
+import { formatDuration, startWorkout, useActiveWorkout } from '@/lib/workouts';
 
 export default function WorkoutScreen() {
   const theme = useTheme();
   const db = useSQLiteContext();
   const active = useActiveWorkout();
+  const routines = useRoutines();
+  const startRoutine = useStartRoutine();
   const [starting, setStarting] = useState(false);
+  // Up to 3 routines that have exercises, most recently used first.
+  const quickRoutines = (routines ?? []).filter((r) => r.exercises.length > 0).slice(0, 3);
 
   async function start() {
     if (starting) return;
@@ -52,11 +58,49 @@ export default function WorkoutScreen() {
         </Pressable>
       ) : (
         <>
-          <PlaceholderCard
-            eyebrow="Suggested for today"
-            title="Leg Day"
-            body="Ferro will suggest what to train based on which muscle groups you've hit recently."
-          />
+          {quickRoutines.length > 0 ? (
+            <View style={styles.routines}>
+              <View style={styles.routinesHeader}>
+                <ThemedText type="smallBold" themeColor="textSecondary" style={styles.eyebrow}>
+                  Start a routine
+                </ThemedText>
+                <Pressable onPress={() => router.push('/routines')} accessibilityRole="button" hitSlop={8}>
+                  <ThemedText type="smallBold" themeColor="accent">
+                    All routines
+                  </ThemedText>
+                </Pressable>
+              </View>
+              {quickRoutines.map((r) => (
+                <Pressable
+                  key={r.id}
+                  onPress={() => startRoutine(r.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Start ${r.name}`}>
+                  {({ pressed }) => (
+                    <ThemedView type="backgroundElement" style={[styles.routineRow, { opacity: pressed ? 0.75 : 1 }]}>
+                      <View style={styles.flex}>
+                        <ThemedText style={styles.routineName} numberOfLines={1}>
+                          {r.name}
+                        </ThemedText>
+                        <ThemedText type="small" themeColor="textSecondary">
+                          {r.exercises.length} {r.exercises.length === 1 ? 'exercise' : 'exercises'}
+                        </ThemedText>
+                      </View>
+                      <ThemedText type="smallBold" themeColor="accent">
+                        Start ›
+                      </ThemedText>
+                    </ThemedView>
+                  )}
+                </Pressable>
+              ))}
+            </View>
+          ) : (
+            <PlaceholderCard
+              eyebrow="Tip"
+              title="Save your go-to workouts"
+              body="Make routines like Push, Pull and Legs on the Routines tab, and they'll show up here to start in one tap."
+            />
+          )}
           <Pressable
             onPress={start}
             disabled={active === undefined || starting}
@@ -98,6 +142,11 @@ function ElapsedText({ startedAt }: { startedAt: number }) {
 }
 
 const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  routines: { gap: Spacing.two },
+  routinesHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  routineRow: { borderRadius: 14, padding: Spacing.three, flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  routineName: { fontSize: 17, lineHeight: 22, fontWeight: 700 },
   activeCard: {
     borderRadius: 16,
     borderWidth: 1.5,

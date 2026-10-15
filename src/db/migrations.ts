@@ -61,6 +61,27 @@ const MIGRATIONS: string[] = [
   CREATE INDEX idx_sets_workout_exercise      ON sets(workout_exercise_id);
   CREATE INDEX idx_workouts_started           ON workouts(started_at);
   `,
+
+  // Version 2: routines (saved workout templates, like "Push day").
+  `
+  CREATE TABLE routines (
+    id            TEXT PRIMARY KEY NOT NULL,
+    name          TEXT NOT NULL,
+    created_at    INTEGER NOT NULL,
+    last_used_at  INTEGER                 -- NULL until you start it the first time
+  );
+
+  -- The exercises in a routine, in order, with how many sets to start with.
+  CREATE TABLE routine_exercises (
+    id           TEXT PRIMARY KEY NOT NULL,
+    routine_id   TEXT NOT NULL REFERENCES routines(id) ON DELETE CASCADE,
+    exercise_id  TEXT NOT NULL,
+    position     INTEGER NOT NULL,
+    sets         INTEGER NOT NULL DEFAULT 3
+  );
+
+  CREATE INDEX idx_routine_exercises_routine ON routine_exercises(routine_id);
+  `,
 ];
 
 export const DATABASE_NAME = 'ferro.db';
