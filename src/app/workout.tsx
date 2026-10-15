@@ -20,6 +20,7 @@ import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import type { Exercise, ExerciseKind } from '@/data/exercises';
 import { useAllExercises } from '@/lib/custom-exercises';
+import { findNewPRs } from '@/lib/progress';
 import {
   addSet,
   deleteSet,
@@ -209,7 +210,23 @@ export default function ActiveWorkoutScreen() {
         formatDuration(s.durationSec),
       ];
       if (s.volume > 0) parts.push(`${Math.round(s.volume).toLocaleString()} lb lifted`);
-      Alert.alert('Workout saved', parts.join(' · '));
+
+      // Any records this workout broke, e.g. "Bench Press: heaviest weight 185 lb × 5".
+      const prs = await findNewPRs(db, workout.id, kindOf).catch((err) => {
+        console.warn('Could not check PRs', err);
+        return [];
+      });
+      const prLines = prs.map(
+        (p) => `${exerciseById.get(p.exerciseId)?.name ?? 'Exercise'}: ${p.label.toLowerCase()} ${p.value}`,
+      );
+      if (prLines.length > 0) {
+        Alert.alert(
+          `${prLines.length} new ${prLines.length === 1 ? 'PR' : 'PRs'}!`,
+          `${prLines.join('\n')}\n\n${parts.join(' · ')}`,
+        );
+      } else {
+        Alert.alert('Workout saved', parts.join(' · '));
+      }
     } catch (err) {
       leaving.current = false;
       console.warn('Could not finish workout', err);

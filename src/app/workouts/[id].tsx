@@ -95,7 +95,17 @@ export default function WorkoutDetailScreen() {
           const best = bestSetId(kind, block.sets);
           return (
             <ThemedView key={block.id} type="backgroundElement" style={styles.block}>
-              <ThemedText style={styles.exerciseName}>{exercise?.name ?? 'Unknown exercise'}</ThemedText>
+              <Pressable
+                onPress={() => router.push({ pathname: '/exercise-progress/[id]', params: { id: block.exercise_id } })}
+                accessibilityRole="button"
+                accessibilityLabel={`${exercise?.name ?? 'Exercise'} progress`}
+                hitSlop={6}
+                style={styles.exerciseHeader}>
+                <ThemedText style={[styles.exerciseName, styles.flex]}>{exercise?.name ?? 'Unknown exercise'}</ThemedText>
+                <ThemedText type="smallBold" themeColor="accent">
+                  Progress ›
+                </ThemedText>
+              </Pressable>
               {exercise ? (
                 <ThemedText type="small" themeColor="textSecondary" style={styles.equipment}>
                   {exercise.equipment}
@@ -176,6 +186,8 @@ function bestSetId(kind: ExerciseKind, sets: SetRow[]) {
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1 },
+  flex: { flex: 1 },
+  exerciseHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
