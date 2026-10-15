@@ -11,8 +11,9 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { RestBar } from '@/components/rest-timer';
 import { describeDraft, SetHeader, SetRow, type SetDraft } from '@/components/set-row';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -45,6 +46,10 @@ const EMPTY_DRAFT: SetDraft = { weight: '', reps: '', minutes: '', miles: '' };
 
 export default function ActiveWorkoutScreen() {
   const theme = useTheme();
+  // Space taken by the notch/status bar and the home indicator. Applied as
+  // padding by hand because SafeAreaView doesn't always pick these up in a
+  // full-screen modal.
+  const insets = useSafeAreaInsets();
   const db = useSQLiteContext();
   const changes = useWorkoutsVersion();
   const allExercises = useAllExercises();
@@ -227,7 +232,15 @@ export default function ActiveWorkoutScreen() {
   }
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={[styles.safeArea, { backgroundColor: theme.background }]}>
+    <View
+      style={[
+        styles.safeArea,
+        {
+          backgroundColor: theme.background,
+          paddingTop: insets.top + Spacing.two,
+          // The rest bar at the bottom handles the home-indicator spacing itself.
+        },
+      ]}>
       <View style={styles.topBar}>
         <Pressable onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Minimize workout" hitSlop={8}>
           <ThemedText themeColor="textSecondary" style={styles.barButton}>
@@ -353,7 +366,10 @@ export default function ActiveWorkoutScreen() {
           </Pressable>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+
+      {/* Start it yourself when you want; tap the time to change it. */}
+      <RestBar bottomInset={insets.bottom} />
+    </View>
   );
 }
 
