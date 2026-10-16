@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSQLiteContext } from 'expo-sqlite';
 import { Pressable, StyleSheet, Vibration, View } from 'react-native';
 
 import { Chip } from '@/components/chip';
@@ -13,6 +14,7 @@ import {
   stopRest,
   useRest,
 } from '@/lib/rest';
+import { getSettings, saveSetting } from '@/lib/settings';
 import { formatDuration } from '@/lib/workouts';
 
 type RestBarProps = {
@@ -28,12 +30,20 @@ type RestBarProps = {
  */
 export function RestBar({ bottomInset = 0 }: RestBarProps) {
   const theme = useTheme();
+  const db = useSQLiteContext();
   const { startedAt, targetSec } = useRest();
   const [editing, setEditing] = useState(false);
   const [now, setNow] = useState(() => Date.now());
   const buzzedFor = useRef<number | null>(null);
 
   const running = startedAt !== null;
+
+  // Changing the rest time here also saves it as your default (Profile → Default rest time).
+  useEffect(() => {
+    if (targetSec !== getSettings().restSec) {
+      saveSetting(db, 'restSec', targetSec).catch((err) => console.warn('Could not save rest time', err));
+    }
+  }, [db, targetSec]);
 
   useEffect(() => {
     if (!running) return;

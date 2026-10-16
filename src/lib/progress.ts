@@ -2,6 +2,7 @@ import { useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 
 import type { ExerciseKind } from '@/data/exercises';
+import { formatWeight, formatWeightRounded } from '@/lib/settings';
 import { formatDuration, METERS_PER_MILE, useWorkoutsVersion } from '@/lib/workouts';
 
 /**
@@ -145,13 +146,14 @@ export type Metric = {
   format: (n: number) => string;
 };
 
-const lb = (n: number) => `${trimNumber(n)} lb`;
+// Weights are stored in lb; these show them in your chosen unit.
+const lb = (n: number) => formatWeight(n);
 const miles = (m: number) => `${trimNumber(m / METERS_PER_MILE)} mi`;
 
 const METRICS: Record<string, Metric> = {
-  e1rm: { key: 'e1rm', label: 'Est. 1RM', value: (s) => s.bestE1rm, format: (n) => `${Math.round(n)} lb` },
+  e1rm: { key: 'e1rm', label: 'Est. 1RM', value: (s) => s.bestE1rm, format: formatWeightRounded },
   heaviest: { key: 'heaviest', label: 'Heaviest', value: (s) => s.maxWeight, format: lb },
-  volume: { key: 'volume', label: 'Volume', value: (s) => s.volume, format: (n) => `${Math.round(n).toLocaleString()} lb` },
+  volume: { key: 'volume', label: 'Volume', value: (s) => s.volume, format: formatWeightRounded },
   maxReps: { key: 'maxReps', label: 'Best set', value: (s) => s.maxReps, format: (n) => `${n} reps` },
   totalReps: { key: 'totalReps', label: 'Total reps', value: (s) => s.totalReps, format: (n) => `${n} reps` },
   distance: { key: 'distance', label: 'Distance', value: (s) => s.totalDistanceM, format: miles },
@@ -183,16 +185,16 @@ export function recordsFor(kind: ExerciseKind, sessions: Session[]): RecordItem[
       records.push({ label: 'Heaviest weight', value: lb(heavy.maxWeight), detail: `× ${heavy.maxWeightSet.reps}`, startedAt: heavy.startedAt });
     const e = best((s) => s.bestE1rm);
     if (e.bestE1rmSet)
-      records.push({ label: 'Best est. 1RM', value: METRICS.e1rm.format(e.bestE1rm), detail: `from ${trimNumber(e.bestE1rmSet.weight)} × ${e.bestE1rmSet.reps}`, startedAt: e.startedAt });
+      records.push({ label: 'Best est. 1RM', value: METRICS.e1rm.format(e.bestE1rm), detail: `from ${formatWeight(e.bestE1rmSet.weight)} × ${e.bestE1rmSet.reps}`, startedAt: e.startedAt });
     const v = best((s) => s.volume);
-    records.push({ label: 'Most volume', value: METRICS.volume.format(v.volume), detail: `${v.sets} sets`, startedAt: v.startedAt });
+    records.push({ label: 'Most volume', value: METRICS.volume.format(v.volume), detail: `${v.sets} ${v.sets === 1 ? 'set' : 'sets'}`, startedAt: v.startedAt });
     const reps = best((s) => s.maxReps);
     records.push({ label: 'Most reps in a set', value: `${reps.maxReps} reps`, detail: null, startedAt: reps.startedAt });
   } else if (kind === 'bodyweight') {
     const reps = best((s) => s.maxReps);
     records.push({ label: 'Most reps in a set', value: `${reps.maxReps} reps`, detail: null, startedAt: reps.startedAt });
     const total = best((s) => s.totalReps);
-    records.push({ label: 'Most reps in a workout', value: `${total.totalReps} reps`, detail: `${total.sets} sets`, startedAt: total.startedAt });
+    records.push({ label: 'Most reps in a workout', value: `${total.totalReps} reps`, detail: `${total.sets} ${total.sets === 1 ? 'set' : 'sets'}`, startedAt: total.startedAt });
   } else {
     const far = best((s) => s.totalDistanceM);
     if (far.totalDistanceM > 0)
@@ -236,7 +238,7 @@ export async function findNewPRs(
         prs.push({ exerciseId, label: 'Heaviest weight', value: `${lb(now.maxWeight)} × ${now.maxWeightSet.reps}` });
       } else if (now.bestE1rm > prevBest((s) => s.bestE1rm) + 0.5 && now.bestE1rmSet) {
         // Only mention est. 1RM when it isn't already covered by a heavier weight.
-        prs.push({ exerciseId, label: 'Est. 1RM', value: `${METRICS.e1rm.format(now.bestE1rm)} (${trimNumber(now.bestE1rmSet.weight)} × ${now.bestE1rmSet.reps})` });
+        prs.push({ exerciseId, label: 'Est. 1RM', value: `${METRICS.e1rm.format(now.bestE1rm)} (${formatWeight(now.bestE1rmSet.weight)} × ${now.bestE1rmSet.reps})` });
       }
     } else if (kind === 'bodyweight') {
       if (now.maxReps > prevBest((s) => s.maxReps)) prs.push({ exerciseId, label: 'Most reps', value: `${now.maxReps} reps` });

@@ -12,6 +12,7 @@ import { Spacing } from '@/constants/theme';
 import type { Exercise } from '@/data/exercises';
 import { useAllExercises } from '@/lib/custom-exercises';
 import { dayLabel } from '@/lib/history';
+import { useSettings } from '@/lib/settings';
 import { changeLabel, metricsFor, toSessions, useSetPointsByExercise, type Session } from '@/lib/progress';
 
 /** How many recent sessions the small chart on each card shows. */
@@ -23,6 +24,7 @@ type Row = { exerciseId: string; exercise: Exercise | undefined; sessions: Sessi
 
 export default function ProgressScreen() {
   const byExercise = useSetPointsByExercise();
+  useSettings(); // re-draw if you switch lb/kg
   const exercises = useAllExercises();
   const [sort, setSort] = useState<SortMode>('recent');
 

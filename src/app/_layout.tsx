@@ -1,10 +1,12 @@
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { SQLiteProvider } from 'expo-sqlite';
-import { useColorScheme } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import { DATABASE_NAME, migrateDbIfNeeded } from '@/db/migrations';
+import { initDatabase } from '@/db/init';
+import { DATABASE_NAME } from '@/db/migrations';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -12,16 +14,19 @@ SplashScreen.preventAutoHideAsync();
  * Root navigator. The five tabs live in the (tabs) group; the profile
  * screen slides up over them as a modal.
  *
- * SQLiteProvider opens the on-device database and runs any pending
- * migrations before the screens load, so every screen can use
+ * SQLiteProvider opens the on-device database, runs any pending migrations
+ * and loads your settings before the screens load, so every screen can use
  * `useSQLiteContext()` to read and write data.
+ *
+ * useColorScheme follows the Theme setting (System, Light or Dark).
  */
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       <AnimatedSplashOverlay />
-      <SQLiteProvider databaseName={DATABASE_NAME} onInit={migrateDbIfNeeded}>
+      <SQLiteProvider databaseName={DATABASE_NAME} onInit={initDatabase}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="profile" options={{ presentation: 'modal' }} />

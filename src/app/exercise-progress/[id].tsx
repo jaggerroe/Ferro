@@ -20,6 +20,7 @@ import {
   useSetPointsByExercise,
   type Session,
 } from '@/lib/progress';
+import { formatWeight, formatWeightRounded, useSettings } from '@/lib/settings';
 import { formatDuration, METERS_PER_MILE } from '@/lib/workouts';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -31,6 +32,7 @@ export default function ExerciseProgressScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const byExercise = useSetPointsByExercise();
+  useSettings(); // re-draw if you switch lb/kg
   const exercises = useAllExercises();
   const exercise = exercises.find((e) => e.id === id);
   const kind: ExerciseKind = exercise?.kind ?? 'strength';
@@ -192,8 +194,8 @@ function shortDate(ms: number) {
 function sessionSummary(kind: ExerciseKind, s: Session) {
   const sets = `${s.sets} ${s.sets === 1 ? 'set' : 'sets'}`;
   if (kind === 'strength') {
-    const top = s.maxWeightSet ? `top ${trimNumber(s.maxWeightSet.weight)} × ${s.maxWeightSet.reps}` : null;
-    return [sets, top, s.volume > 0 ? `${Math.round(s.volume).toLocaleString()} lb` : null].filter(Boolean).join('  ·  ');
+    const top = s.maxWeightSet ? `top ${formatWeight(s.maxWeightSet.weight)} × ${s.maxWeightSet.reps}` : null;
+    return [sets, top, s.volume > 0 ? formatWeightRounded(s.volume) : null].filter(Boolean).join('  ·  ');
   }
   if (kind === 'bodyweight') return `${sets}  ·  best ${s.maxReps} reps  ·  ${s.totalReps} total`;
   return [

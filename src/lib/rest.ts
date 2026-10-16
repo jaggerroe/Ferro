@@ -2,9 +2,9 @@ import { useSyncExternalStore } from 'react';
 
 /**
  * The rest timer's state. It lives outside any screen so it keeps running
- * if you hide the workout screen, and it remembers your chosen rest time
- * while the app is open. (The rest time becomes a saved setting once the
- * Profile settings are built.)
+ * if you hide the workout screen. The rest time starts from your saved
+ * default (Profile → Default rest time), and changing it in the rest bar
+ * saves it as your new default.
  */
 
 export type RestState = {

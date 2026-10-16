@@ -1,6 +1,7 @@
 import { useSQLiteContext, type SQLiteDatabase } from 'expo-sqlite';
 import { useEffect, useState } from 'react';
 
+import { formatWeightRounded } from '@/lib/settings';
 import { getWorkoutBlocks, useWorkoutsVersion, type WorkoutExerciseBlock } from '@/lib/workouts';
 
 /**
@@ -139,7 +140,7 @@ export function shortDuration(totalSec: number) {
   return h > 0 ? `${h}h ${m % 60}m` : `${m}m`;
 }
 
-/** 12450 → "12,450 lb", 0 → null (so cardio-only workouts don't show "0 lb") */
+/** 12450 → "12,450 lb" (or kg), 0 → null (so cardio-only workouts don't show "0 lb") */
 export function volumeLabel(volume: number) {
-  return volume > 0 ? `${Math.round(volume).toLocaleString()} lb` : null;
+  return volume > 0 ? formatWeightRounded(volume) : null;
 }

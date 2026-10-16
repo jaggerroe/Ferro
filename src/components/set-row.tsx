@@ -4,6 +4,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import type { ExerciseKind } from '@/data/exercises';
 import { useTheme } from '@/hooks/use-theme';
+import { weightUnitLabel } from '@/lib/settings';
 
 /** What's typed in a set's boxes, kept as text so "135." is allowed mid-typing. */
 export type SetDraft = { weight: string; reps: string; minutes: string; miles: string };
@@ -32,6 +33,11 @@ export const FIELDS_FOR_KIND: Record<ExerciseKind, { key: keyof SetDraft; label:
     { key: 'miles', label: 'Mi', decimal: true },
   ],
 };
+
+/** Column/placeholder label for a box. The weight box shows your unit (lb or kg). */
+function fieldLabel(f: { key: keyof SetDraft; label: string }) {
+  return f.key === 'weight' ? weightUnitLabel() : f.label;
+}
 
 /** One row in an exercise's set table: number, last time, input boxes, check button. */
 export function SetRow({
@@ -65,12 +71,12 @@ export function SetRow({
           key={f.key}
           value={draft[f.key]}
           onChangeText={(text) => onChange({ ...draft, [f.key]: cleanNumber(text, f.decimal) })}
-          placeholder={previous?.[f.key] || f.label}
+          placeholder={previous?.[f.key] || fieldLabel(f)}
           placeholderTextColor={theme.textSecondary}
           keyboardType={f.decimal ? 'decimal-pad' : 'number-pad'}
           selectTextOnFocus
           maxLength={7}
-          accessibilityLabel={`Set ${index + 1} ${f.label}`}
+          accessibilityLabel={`Set ${index + 1} ${fieldLabel(f)}`}
           style={[
             styles.input,
             {
@@ -117,7 +123,7 @@ export function SetHeader({ kind }: { kind: ExerciseKind }) {
           type="smallBold"
           themeColor="textSecondary"
           style={[styles.inputHeading, styles.heading]}>
-          {f.label}
+          {fieldLabel(f)}
         </ThemedText>
       ))}
       <View style={styles.checkSpacer} />

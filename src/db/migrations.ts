@@ -82,6 +82,14 @@ const MIGRATIONS: string[] = [
 
   CREATE INDEX idx_routine_exercises_routine ON routine_exercises(routine_id);
   `,
+
+  // Version 3: your settings (units, default rest time, theme), one row per setting.
+  `
+  CREATE TABLE settings (
+    key    TEXT PRIMARY KEY NOT NULL,
+    value  TEXT NOT NULL                 -- stored as JSON, e.g. "kg" or 120
+  );
+  `,
 ];
 
 export const DATABASE_NAME = 'ferro.db';

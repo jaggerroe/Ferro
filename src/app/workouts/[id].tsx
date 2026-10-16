@@ -11,6 +11,7 @@ import type { ExerciseKind } from '@/data/exercises';
 import { useAllExercises } from '@/lib/custom-exercises';
 import { dayLabel, shortDuration, timeLabel, useWorkoutDetail, volumeLabel } from '@/lib/history';
 import { saveWorkoutAsRoutine } from '@/lib/routines';
+import { formatWeight, useSettings } from '@/lib/settings';
 import { discardWorkout, METERS_PER_MILE, type SetRow } from '@/lib/workouts';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -20,6 +21,7 @@ export default function WorkoutDetailScreen() {
   const db = useSQLiteContext();
   const { id } = useLocalSearchParams<{ id: string }>();
   const workout = useWorkoutDetail(id);
+  useSettings(); // re-draw if you switch lb/kg
   const exercises = useAllExercises();
   const exerciseById = useMemo(() => new Map(exercises.map((e) => [e.id, e])), [exercises]);
 
@@ -183,7 +185,7 @@ const trim = (n: number) => String(Number(n.toFixed(2)));
 
 /** "135 lb × 8", "12 reps", or "20 min · 2 mi" */
 function describeSet(kind: ExerciseKind, s: SetRow) {
-  if (kind === 'strength') return `${trim(s.weight ?? 0)} lb × ${s.reps ?? 0}`;
+  if (kind === 'strength') return `${formatWeight(s.weight ?? 0)} × ${s.reps ?? 0}`;
   if (kind === 'bodyweight') return `${s.reps ?? 0} reps`;
   const parts = [
     s.duration_sec !== null ? `${trim(s.duration_sec / 60)} min` : null,

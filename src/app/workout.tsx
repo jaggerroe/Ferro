@@ -21,6 +21,7 @@ import { Spacing } from '@/constants/theme';
 import type { Exercise, ExerciseKind } from '@/data/exercises';
 import { useAllExercises } from '@/lib/custom-exercises';
 import { findNewPRs } from '@/lib/progress';
+import { formatWeightRounded, fromDisplayWeight, useSettings, weightToInput } from '@/lib/settings';
 import {
   addSet,
   deleteSet,
@@ -65,6 +66,11 @@ export default function ActiveWorkoutScreen() {
   const loadedName = useRef(false);
   // Set when this screen closes itself, so the loader below doesn't also try to close it.
   const leaving = useRef(false);
+  // Weights in the boxes are in your chosen unit; switching units rebuilds them from the database.
+  const { weightUnit } = useSettings();
+  useEffect(() => {
+    setDrafts({});
+  }, [weightUnit]);
 
   // Load (and re-load after any change) the workout in progress.
   useEffect(() => {
@@ -99,7 +105,7 @@ export default function ActiveWorkoutScreen() {
     return () => {
       alive = false;
     };
-  }, [db, changes]);
+  }, [db, changes, weightUnit]);
 
   const elapsed = useElapsedSeconds(workout?.started_at);
 
@@ -209,7 +215,7 @@ export default function ActiveWorkoutScreen() {
         `${s.sets} ${s.sets === 1 ? 'set' : 'sets'}`,
         formatDuration(s.durationSec),
       ];
-      if (s.volume > 0) parts.push(`${Math.round(s.volume).toLocaleString()} lb lifted`);
+      if (s.volume > 0) parts.push(`${formatWeightRounded(s.volume)} lifted`);
 
       // Any records this workout broke, e.g. "Bench Press: heaviest weight 185 lb × 5".
       const prs = await findNewPRs(db, workout.id, kindOf).catch((err) => {
@@ -434,7 +440,7 @@ function draftToFields(kind: ExerciseKind, d: SetDraft): SetFields {
   const miles = toNumber(d.miles);
   const reps = toNumber(d.reps);
   return {
-    weight: kind === 'strength' ? toNumber(d.weight) : null,
+    weight: kind === 'strength' && toNumber(d.weight) !== null ? fromDisplayWeight(toNumber(d.weight)!) : null,
     reps: kind === 'cardio' || reps === null ? null : Math.round(reps),
     duration_sec: kind === 'cardio' && minutes !== null ? Math.round(minutes * 60) : null,
     distance_m: kind === 'cardio' && miles !== null ? miles * METERS_PER_MILE : null,
@@ -443,7 +449,7 @@ function draftToFields(kind: ExerciseKind, d: SetDraft): SetFields {
 
 function rowToDraft(s: SetRowData): SetDraft {
   return {
-    weight: s.weight !== null ? trimNumber(s.weight) : '',
+    weight: s.weight !== null ? weightToInput(s.weight) : '',
     reps: s.reps !== null ? String(s.reps) : '',
     minutes: s.duration_sec !== null ? trimNumber(s.duration_sec / 60) : '',
     miles: s.distance_m !== null ? trimNumber(s.distance_m / METERS_PER_MILE) : '',

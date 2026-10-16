@@ -17,6 +17,7 @@ import {
   volumeLabel,
   type HistoryItem,
 } from '@/lib/history';
+import { useSettings } from '@/lib/settings';
 import { useTheme } from '@/hooks/use-theme';
 
 /** How many exercises a card lists before "+ N more". */
@@ -24,6 +25,7 @@ const MAX_EXERCISES_SHOWN = 4;
 
 export default function HistoryScreen() {
   const history = useHistory();
+  useSettings(); // re-draw if you switch lb/kg
   const exercises = useAllExercises();
   const nameOf = useMemo(() => {
     const map = new Map(exercises.map((e) => [e.id, e.name]));
