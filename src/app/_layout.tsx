@@ -4,6 +4,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { SyncManager } from '@/components/sync-manager';
 import { initDatabase } from '@/db/init';
 import { DATABASE_NAME } from '@/db/migrations';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -27,9 +28,12 @@ export default function RootLayout() {
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       <AnimatedSplashOverlay />
       <SQLiteProvider databaseName={DATABASE_NAME} onInit={initDatabase}>
+        {/* Backs up in the background while you're signed in. */}
+        <SyncManager />
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="(tabs)" />
           <Stack.Screen name="profile" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="account" options={{ presentation: 'modal' }} />
           <Stack.Screen name="exercises" options={{ presentation: 'modal' }} />
           <Stack.Screen name="new-exercise" options={{ presentation: 'modal' }} />
           {/* Full screen, and no swipe-down to close, so a workout isn't dismissed by accident. */}

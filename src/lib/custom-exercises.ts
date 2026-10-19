@@ -28,7 +28,8 @@ function subscribe(listener: () => void) {
   };
 }
 const getVersion = () => version;
-function notifyChanged() {
+/** Tells every screen (and backup) that custom exercises changed. */
+export function notifyCustomExercisesChanged() {
   version++;
   listeners.forEach((l) => l());
 }
@@ -88,7 +89,12 @@ export async function addCustomExercise(db: SQLiteDatabase, input: NewExerciseIn
     input.kind,
     Date.now(),
   );
-  notifyChanged();
+  notifyCustomExercisesChanged();
+}
+
+/** Ticks whenever custom exercises change. */
+export function useCustomExercisesVersion() {
+  return useSyncExternalStore(subscribe, getVersion, getVersion);
 }
 
 /** Only the user's custom exercises, loaded from the database. */
