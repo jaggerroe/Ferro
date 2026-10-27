@@ -131,7 +131,7 @@ async function syncOnce(db: SQLiteDatabase, userId: string, allowOtherAccount: b
   try {
     // First time this account syncs on this phone: bring down what's in the cloud first,
     // so nothing in the backup gets removed before this phone has it.
-    if (previousUser !== userId) await pull(db);
+    if (previousUser !== userId) await pull(db, userId);
     await push(db, userId);
 
     const now = Date.now();
@@ -145,12 +145,12 @@ async function syncOnce(db: SQLiteDatabase, userId: string, allowOtherAccount: b
 }
 
 /** Downloads everything in the account and adds whatever the phone doesn't have yet. */
-async function pull(db: SQLiteDatabase) {
+async function pull(db: SQLiteDatabase, userId: string) {
   const client = supabase!;
   let added = 0;
 
   for (const table of TABLES) {
-    const rows = await fetchAll(table.name, table.columns.join(','));
+    const rows = await fetchAll(table.name, table.columns.join(','), userId);
     const placeholders = table.columns.map(() => '?').join(', ');
     const sql = `INSERT OR IGNORE INTO ${table.name} (${table.columns.join(', ')}) VALUES (${placeholders})`;
     for (const row of rows) {
@@ -163,7 +163,7 @@ async function pull(db: SQLiteDatabase) {
     }
   }
 
-  const { data: settings, error } = await client.from('user_settings').select('key, value');
+  const { data: settings, error } = await client.from('user_settings').select('key, value').eq('user_id', userId);
   if (error) throw error;
   for (const s of settings ?? []) {
     if (SYNCED_SETTINGS.includes(s.key)) {
@@ -193,10 +193,14 @@ async function push(db: SQLiteDatabase, userId: string) {
     }
 
     const localIds = new Set(local.map((r) => r.id as string));
-    const remote = await fetchAll(table.name, 'id');
+    const remote = await fetchAll(table.name, 'id', userId);
     const gone = remote.map((r) => r.id as string).filter((id) => !localIds.has(id));
     for (let i = 0; i < gone.length; i += CHUNK / 2) {
-      const { error } = await client.from(table.name).delete().in('id', gone.slice(i, i + CHUNK / 2));
+      const { error } = await client
+        .from(table.name)
+        .delete()
+        .eq('user_id', userId)
+        .in('id', gone.slice(i, i + CHUNK / 2));
       if (error) throw error;
     }
   }
@@ -209,11 +213,23 @@ async function push(db: SQLiteDatabase, userId: string) {
   }
 }
 
-/** Every row of a table for this account, a page at a time. */
-async function fetchAll(table: string, columns: string) {
+/**
+ * Every row of a table for this account, a page at a time.
+ *
+ * The `user_id` filter matters: friends can read each other's finished
+ * workouts, so without it this would also return your friends' rows, and
+ * sync would copy their workouts onto your phone as if they were yours.
+ * Ordering by id keeps the pages from overlapping or skipping rows.
+ */
+async function fetchAll(table: string, columns: string, userId: string) {
   const all: Record<string, unknown>[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase!.from(table).select(columns).range(from, from + PAGE - 1);
+    const { data, error } = await supabase!
+      .from(table)
+      .select(columns)
+      .eq('user_id', userId)
+      .order('id')
+      .range(from, from + PAGE - 1);
     if (error) throw error;
     const rows = (data ?? []) as unknown as Record<string, unknown>[];
     all.push(...rows);

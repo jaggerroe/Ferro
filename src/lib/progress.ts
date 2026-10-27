@@ -230,26 +230,54 @@ export async function findNewPRs(
     const before = toSessions(points.filter((p) => p.exerciseId === exerciseId && p.startedAt < startedAt));
     if (before.length === 0) continue;
     const [now] = toSessions(current.filter((p) => p.exerciseId === exerciseId));
-    const prevBest = (f: (s: Session) => number) => Math.max(...before.map(f));
-    const kind = kindOf(exerciseId);
-
-    if (kind === 'strength') {
-      if (now.maxWeight > prevBest((s) => s.maxWeight) && now.maxWeightSet) {
-        prs.push({ exerciseId, label: 'Heaviest weight', value: `${lb(now.maxWeight)} × ${now.maxWeightSet.reps}` });
-      } else if (now.bestE1rm > prevBest((s) => s.bestE1rm) + 0.5 && now.bestE1rmSet) {
-        // Only mention est. 1RM when it isn't already covered by a heavier weight.
-        prs.push({ exerciseId, label: 'Est. 1RM', value: `${METRICS.e1rm.format(now.bestE1rm)} (${formatWeight(now.bestE1rmSet.weight)} × ${now.bestE1rmSet.reps})` });
-      }
-    } else if (kind === 'bodyweight') {
-      if (now.maxReps > prevBest((s) => s.maxReps)) prs.push({ exerciseId, label: 'Most reps', value: `${now.maxReps} reps` });
-    } else {
-      if (now.totalDistanceM > 0 && now.totalDistanceM > prevBest((s) => s.totalDistanceM))
-        prs.push({ exerciseId, label: 'Longest distance', value: miles(now.totalDistanceM) });
-      else if (now.totalDurationSec > 0 && now.totalDurationSec > prevBest((s) => s.totalDurationSec))
-        prs.push({ exerciseId, label: 'Longest time', value: formatDuration(now.totalDurationSec) });
-    }
+    const pr = prFor(exerciseId, kindOf(exerciseId), now, bestsOf(before));
+    if (pr) prs.push(pr);
   }
   return prs;
+}
+
+/** The best numbers across earlier sessions of one exercise. */
+export type PreviousBests = {
+  maxWeight: number;
+  bestE1rm: number;
+  maxReps: number;
+  totalDistanceM: number;
+  totalDurationSec: number;
+};
+
+export function bestsOf(sessions: Session[]): PreviousBests {
+  const best = (f: (s: Session) => number) => Math.max(...sessions.map(f));
+  return {
+    maxWeight: best((s) => s.maxWeight),
+    bestE1rm: best((s) => s.bestE1rm),
+    maxReps: best((s) => s.maxReps),
+    totalDistanceM: best((s) => s.totalDistanceM),
+    totalDurationSec: best((s) => s.totalDurationSec),
+  };
+}
+
+/**
+ * The PR (if any) a session set against earlier bests. Shared by your own
+ * "workout finished" summary and the Friends feed, so both use the same rules.
+ */
+export function prFor(exerciseId: string, kind: ExerciseKind, now: Session, prev: PreviousBests): NewPR | null {
+  if (kind === 'strength') {
+    if (now.maxWeight > prev.maxWeight && now.maxWeightSet) {
+      return { exerciseId, label: 'Heaviest weight', value: `${lb(now.maxWeight)} × ${now.maxWeightSet.reps}` };
+    }
+    if (now.bestE1rm > prev.bestE1rm + 0.5 && now.bestE1rmSet) {
+      // Only mention est. 1RM when it isn't already covered by a heavier weight.
+      return { exerciseId, label: 'Est. 1RM', value: `${METRICS.e1rm.format(now.bestE1rm)} (${formatWeight(now.bestE1rmSet.weight)} × ${now.bestE1rmSet.reps})` };
+    }
+  } else if (kind === 'bodyweight') {
+    if (now.maxReps > prev.maxReps) return { exerciseId, label: 'Most reps', value: `${now.maxReps} reps` };
+  } else {
+    if (now.totalDistanceM > 0 && now.totalDistanceM > prev.totalDistanceM)
+      return { exerciseId, label: 'Longest distance', value: miles(now.totalDistanceM) };
+    if (now.totalDurationSec > 0 && now.totalDurationSec > prev.totalDurationSec)
+      return { exerciseId, label: 'Longest time', value: formatDuration(now.totalDurationSec) };
+  }
+  return null;
 }
 
 /** 2.50 → "2.5", 135.00 → "135" */
