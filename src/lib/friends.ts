@@ -121,12 +121,18 @@ type RawFeedWorkout = {
 
 const builtInById = new Map(EXERCISES.map((e) => [e.id, e]));
 
+/** Workouts per page of the feed. A full page means there may be more. */
+export const FEED_PAGE_SIZE = 20;
+
 /**
- * Friends' finished workouts, newest first, 20 at a time. For the next page,
- * pass the `finishedAt` of the last workout you're showing.
+ * Friends' finished workouts, newest first, a page at a time. For the next
+ * page, pass the `finishedAt` of the last workout you're showing.
  */
 export async function getFriendFeed(olderThan?: number): Promise<FeedWorkout[]> {
-  const rows = await call<RawFeedWorkout[]>('friend_feed', { older_than: olderThan ?? null, max_rows: 20 });
+  const rows = await call<RawFeedWorkout[]>('friend_feed', {
+    older_than: olderThan ?? null,
+    max_rows: FEED_PAGE_SIZE,
+  });
   return (rows ?? []).map(toFeedWorkout);
 }
 
