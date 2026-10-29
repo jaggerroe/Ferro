@@ -18,13 +18,14 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+-- Who can see which profiles is set in the Friends section further down
+-- (you, plus people you're connected to), because it needs the friendships
+-- table. This used to let every signed-in user list every username.
 drop policy if exists "Signed-in users can see profiles" on public.profiles;
-create policy "Signed-in users can see profiles" on public.profiles
-  for select to authenticated using (true);
 
 drop policy if exists "You can update your own profile" on public.profiles;
 create policy "You can update your own profile" on public.profiles
-  for update to authenticated using (id = auth.uid()) with check (id = auth.uid());
+  for update to authenticated using (id = (select auth.uid())) with check (id = (select auth.uid()));
 
 -- Make the profile automatically when someone signs up, using the username
 -- the app sends along with the sign-up.
@@ -74,35 +75,38 @@ grant execute on function public.delete_my_account() to authenticated;
 -- Backed-up data. Same columns as the tables on the phone, plus user_id.
 -- ---------------------------------------------------------------------------
 create table if not exists public.custom_exercises (
-  id          text primary key,
+  id          text not null,
   user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name        text not null,
   muscle      text not null,
   secondary   text not null default '[]',
   equipment   text not null,
   kind        text not null,
-  created_at  bigint not null
+  created_at  bigint not null,
+  primary key (user_id, id)
 );
 
 create table if not exists public.workouts (
-  id           text primary key,
+  id           text not null,
   user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name         text,
   started_at   bigint not null,
   finished_at  bigint,
-  notes        text
+  notes        text,
+  primary key (user_id, id)
 );
 
 create table if not exists public.workout_exercises (
-  id           text primary key,
+  id           text not null,
   user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
   workout_id   text not null,
   exercise_id  text not null,
-  position     integer not null
+  position     integer not null,
+  primary key (user_id, id)
 );
 
 create table if not exists public.sets (
-  id                   text primary key,
+  id                   text not null,
   user_id              uuid not null default auth.uid() references auth.users (id) on delete cascade,
   workout_exercise_id  text not null,
   position             integer not null,
@@ -110,24 +114,27 @@ create table if not exists public.sets (
   reps                 integer,
   duration_sec         integer,
   distance_m           double precision,
-  completed            integer not null default 0
+  completed            integer not null default 0,
+  primary key (user_id, id)
 );
 
 create table if not exists public.routines (
-  id            text primary key,
+  id            text not null,
   user_id       uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name          text not null,
   created_at    bigint not null,
-  last_used_at  bigint
+  last_used_at  bigint,
+  primary key (user_id, id)
 );
 
 create table if not exists public.routine_exercises (
-  id           text primary key,
+  id           text not null,
   user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
   routine_id   text not null,
   exercise_id  text not null,
   position     integer not null,
-  sets         integer not null default 3
+  sets         integer not null default 3,
+  primary key (user_id, id)
 );
 
 create table if not exists public.user_settings (
@@ -151,8 +158,108 @@ begin
     execute format('drop policy if exists "Own rows only" on public.%I', t);
     execute format(
       'create policy "Own rows only" on public.%I for all to authenticated '
-      'using (user_id = auth.uid()) with check (user_id = auth.uid())', t);
+      -- "(select auth.uid())" instead of "auth.uid()" makes Postgres work out
+      -- who you are once per query instead of once per row (Supabase's advice).
+      'using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))', t);
     execute format('create index if not exists %I on public.%I (user_id)', t || '_user_id_idx', t);
+  end loop;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Safety rules for the backed-up data.
+-- ---------------------------------------------------------------------------
+
+-- 1. Ids are unique per ACCOUNT, not across everyone. Before, every id had to
+--    be unique in the whole database, so if a phone that had backed up one
+--    account signed into another and merged, its backups failed for good
+--    (those ids were "taken"). Databases set up before this get switched over.
+do $$
+declare
+  t text;
+  pk_name text;
+  pk_cols text;
+begin
+  foreach t in array array[
+    'custom_exercises', 'workouts', 'workout_exercises', 'sets', 'routines', 'routine_exercises'
+  ]
+  loop
+    select c.conname, string_agg(a.attname, ',' order by a.attname)
+      into pk_name, pk_cols
+    from pg_constraint c
+    join pg_attribute a on a.attrelid = c.conrelid and a.attnum = any (c.conkey)
+    where c.conrelid = format('public.%I', t)::regclass and c.contype = 'p'
+    group by c.conname;
+
+    if pk_cols = 'id' then
+      execute format('alter table public.%I drop constraint %I', t, pk_name);
+      execute format('alter table public.%I add primary key (user_id, id)', t);
+    end if;
+  end loop;
+end;
+$$;
+
+-- 2. Children must belong to a parent in the SAME account. Without this,
+--    someone could add sets that claim to be part of another person's
+--    workout, and they'd show up in that workout on friends' feeds.
+--    Deleting a workout or routine also deletes what's inside it.
+--    "not valid" = enforce for new rows without re-checking old ones.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'workout_exercises_workout_fk') then
+    alter table public.workout_exercises add constraint workout_exercises_workout_fk
+      foreign key (user_id, workout_id) references public.workouts (user_id, id) on delete cascade not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'sets_workout_exercise_fk') then
+    alter table public.sets add constraint sets_workout_exercise_fk
+      foreign key (user_id, workout_exercise_id) references public.workout_exercises (user_id, id) on delete cascade not valid;
+  end if;
+  if not exists (select 1 from pg_constraint where conname = 'routine_exercises_routine_fk') then
+    alter table public.routine_exercises add constraint routine_exercises_routine_fk
+      foreign key (user_id, routine_id) references public.routines (user_id, id) on delete cascade not valid;
+  end if;
+end;
+$$;
+
+-- 3. Sensible limits on what can be saved, so nobody can store a 10 MB
+--    workout name (that friends would then download) or a weight of 1e300.
+--    Real data from the app is far inside these.
+do $$
+declare
+  rule text[];
+begin
+  foreach rule slice 1 in array array[
+    -- table, rule name, condition
+    ['custom_exercises', 'custom_exercises_limits',
+      $c$char_length(id) <= 64 and char_length(name) between 1 and 60 and char_length(muscle) <= 40
+        and char_length(secondary) <= 500 and char_length(equipment) <= 40
+        and kind in ('strength', 'bodyweight', 'cardio')$c$],
+    ['workouts', 'workouts_limits',
+      $c$char_length(id) <= 64 and char_length(coalesce(name, '')) <= 100
+        and char_length(coalesce(notes, '')) <= 2000
+        and started_at > 0$c$],
+    ['workout_exercises', 'workout_exercises_limits',
+      $c$char_length(id) <= 64 and char_length(exercise_id) <= 100 and position between 0 and 100000$c$],
+    -- Number caps are far above anything real but cover even a typo the set
+    -- boxes allow (7 digits), so a typo can never make backups fail.
+    ['sets', 'sets_limits',
+      $c$char_length(id) <= 64 and position between 0 and 100000 and completed in (0, 1)
+        and (weight is null or weight between 0 and 100000000)
+        and (reps is null or reps between 0 and 100000000)
+        and (duration_sec is null or duration_sec between 0 and 1000000000)
+        and (distance_m is null or distance_m between 0 and 100000000000)$c$],
+    ['routines', 'routines_limits',
+      $c$char_length(id) <= 64 and char_length(name) between 1 and 100$c$],
+    ['routine_exercises', 'routine_exercises_limits',
+      $c$char_length(id) <= 64 and char_length(exercise_id) <= 100
+        and position between 0 and 100000 and sets between 0 and 1000$c$],
+    ['user_settings', 'user_settings_limits',
+      $c$char_length(key) <= 50 and char_length(value) <= 500$c$]
+  ]
+  loop
+    if not exists (select 1 from pg_constraint where conname = rule[2]) then
+      execute format('alter table public.%I add constraint %I check (%s) not valid', rule[1], rule[2], rule[3]);
+    end if;
   end loop;
 end;
 $$;
@@ -210,6 +317,68 @@ as $$
   );
 $$;
 
+-- Blocking. If either of you blocked the other: no requests, no friendship,
+-- and you don't show up in each other's searches. Only the blocker can see
+-- the block (the blocked person isn't told).
+create table if not exists public.blocks (
+  blocker_id  uuid not null references auth.users (id) on delete cascade,
+  blocked_id  uuid not null references auth.users (id) on delete cascade,
+  created_at  timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  check (blocker_id <> blocked_id)
+);
+create index if not exists blocks_blocked_idx on public.blocks (blocked_id);
+
+alter table public.blocks enable row level security;
+drop policy if exists "You can see who you blocked" on public.blocks;
+create policy "You can see who you blocked" on public.blocks
+  for select to authenticated using (blocker_id = (select auth.uid()));
+
+-- Reports go here for you (the app owner) to review in Supabase's Table
+-- Editor. Nobody can read them from the app, not even the person reporting.
+-- Apple requires a way to report people in apps where users see each
+-- other's content.
+create table if not exists public.reports (
+  id                 bigint generated always as identity primary key,
+  reporter_id        uuid not null references auth.users (id) on delete cascade,
+  reported_id        uuid references auth.users (id) on delete set null,
+  reported_username  text not null,
+  reason             text not null check (char_length(reason) between 1 and 200),
+  created_at         timestamptz not null default now(),
+  resolved           boolean not null default false
+);
+alter table public.reports enable row level security;
+
+-- True if a block exists either way between two people. Internal: used by
+-- the functions below, not callable from the app.
+create or replace function public.blocked_between(a uuid, b uuid)
+returns boolean
+language sql
+stable
+security definer set search_path = ''
+as $$
+  select exists (
+    select 1 from public.blocks
+    where (blocker_id = a and blocked_id = b) or (blocker_id = b and blocked_id = a)
+  );
+$$;
+revoke execute on function public.blocked_between(uuid, uuid) from public, anon, authenticated;
+
+-- Who can see a profile (username): you, and anyone you have a request or
+-- friendship with. Finding new people goes through search_users below, which
+-- only returns matches for what you typed, 20 at a time.
+drop policy if exists "You can see profiles of people you're connected to" on public.profiles;
+create policy "You can see profiles of people you're connected to" on public.profiles
+  for select to authenticated
+  using (
+    id = (select auth.uid())
+    or exists (
+      select 1 from public.friendships f
+      where (f.requester_id = (select auth.uid()) and f.addressee_id = profiles.id)
+         or (f.addressee_id = (select auth.uid()) and f.requester_id = profiles.id)
+    )
+  );
+
 -- Send a request to someone (by their account id, which search_users gives
 -- you). If they'd already sent you one, this accepts it instead.
 -- Returns 'requested' or 'friends'.
@@ -227,6 +396,10 @@ begin
   if not exists (select 1 from public.profiles where id = other) then
     raise exception 'That account doesn''t exist';
   end if;
+  -- Same message either way, so a blocked person can't tell they were blocked.
+  if public.blocked_between(me, other) then
+    raise exception 'You can''t send a request to that account';
+  end if;
 
   select * into existing from public.friendships
   where (requester_id = me and addressee_id = other)
@@ -239,6 +412,11 @@ begin
     update public.friendships set status = 'accepted', accepted_at = now()
     where requester_id = other and addressee_id = me;
     return 'friends';
+  end if;
+
+  -- Stops anyone spamming requests to everybody.
+  if (select count(*) from public.friendships where requester_id = me and status = 'pending') >= 50 then
+    raise exception 'You have 50 requests waiting. Cancel some before sending more.';
   end if;
 
   insert into public.friendships (requester_id, addressee_id) values (me, other);
@@ -273,11 +451,16 @@ $$;
 -- Find people by the start of their username. Also says where you stand
 -- with each one: 'none', 'outgoing' (you asked), 'incoming' (they asked)
 -- or 'friends'. Exact matches come first.
+--
+-- It needs at least 3 characters and returns at most 20, so nobody can
+-- download the whole user list. People who blocked you (or you blocked)
+-- don't show up. "security definer" lets it look through all profiles, which
+-- you otherwise can't; it only ever returns id + username.
 create or replace function public.search_users(q text)
 returns table (id uuid, username text, relationship text)
 language sql
 stable
-set search_path = ''
+security definer set search_path = ''
 as $$
   with term as (
     -- Usernames are only a-z, 0-9 and _, so drop anything else. "_" is a
@@ -295,8 +478,10 @@ as $$
   left join public.friendships f
     on (f.requester_id = (select auth.uid()) and f.addressee_id = p.id)
     or (f.addressee_id = (select auth.uid()) and f.requester_id = p.id)
-  where term.t <> ''
+  where char_length(term.t) >= 3
+    and (select auth.uid()) is not null
     and p.id <> (select auth.uid())
+    and not public.blocked_between((select auth.uid()), p.id)
     and p.username like replace(term.t, '_', '\_') || '%'
   order by p.username = term.t desc, p.username
   limit 20;
@@ -326,6 +511,69 @@ as $$
   order by case x.status when 'incoming' then 0 when 'friends' then 1 else 2 end, p.username;
 $$;
 
+-- Block someone: also removes any friendship or request between you.
+create or replace function public.block_user(other uuid)
+returns void
+language plpgsql
+security definer set search_path = ''
+as $$
+declare
+  me uuid := auth.uid();
+begin
+  if me is null then raise exception 'Not signed in'; end if;
+  if other = me then raise exception 'You can''t block yourself'; end if;
+  delete from public.friendships
+  where (requester_id = me and addressee_id = other) or (requester_id = other and addressee_id = me);
+  insert into public.blocks (blocker_id, blocked_id) values (me, other) on conflict do nothing;
+end;
+$$;
+
+create or replace function public.unblock_user(other uuid)
+returns void
+language sql
+security definer set search_path = ''
+as $$
+  delete from public.blocks where blocker_id = auth.uid() and blocked_id = other;
+$$;
+
+-- People you've blocked, with usernames (you can't see their profiles anymore,
+-- so this reads them for you).
+create or replace function public.my_blocked()
+returns table (id uuid, username text)
+language sql
+stable
+security definer set search_path = ''
+as $$
+  select p.id, p.username
+  from public.blocks b
+  join public.profiles p on p.id = b.blocked_id
+  where b.blocker_id = (select auth.uid())
+  order by p.username;
+$$;
+
+-- Report someone. Saves their username at that moment too, in case they
+-- change it or delete their account. Max 20 reports a day per person.
+create or replace function public.report_user(other uuid, reason text)
+returns void
+language plpgsql
+security definer set search_path = ''
+as $$
+declare
+  me uuid := auth.uid();
+  name text;
+begin
+  if me is null then raise exception 'Not signed in'; end if;
+  select username into name from public.profiles where id = other;
+  if name is null then raise exception 'That account doesn''t exist'; end if;
+  if (select count(*) from public.reports
+      where reporter_id = me and created_at > now() - interval '1 day') >= 20 then
+    raise exception 'You''ve sent a lot of reports today. Try again tomorrow.';
+  end if;
+  insert into public.reports (reporter_id, reported_id, reported_username, reason)
+  values (me, other, name, left(coalesce(nullif(trim(reason), ''), 'No reason given'), 200));
+end;
+$$;
+
 -- ---------------------------------------------------------------------------
 -- What friends can see of each other.
 --
@@ -346,7 +594,8 @@ create policy "Friends can see exercises in finished workouts" on public.workout
     public.is_friend(user_id)
     and exists (
       select 1 from public.workouts w
-      where w.id = workout_exercises.workout_id and w.finished_at is not null
+      where w.user_id = workout_exercises.user_id
+        and w.id = workout_exercises.workout_id and w.finished_at is not null
     )
   );
 
@@ -357,8 +606,9 @@ create policy "Friends can see sets in finished workouts" on public.sets
     public.is_friend(user_id)
     and exists (
       select 1 from public.workout_exercises we
-      join public.workouts w on w.id = we.workout_id
-      where we.id = sets.workout_exercise_id and w.finished_at is not null
+      join public.workouts w on w.user_id = we.user_id and w.id = we.workout_id
+      where we.user_id = sets.user_id
+        and we.id = sets.workout_exercise_id and w.finished_at is not null
     )
   );
 
@@ -369,9 +619,12 @@ create policy "Friends can see custom exercises" on public.custom_exercises
 
 -- Speed up the lookups the feed and the policies above do.
 create index if not exists workouts_user_finished_idx on public.workouts (user_id, finished_at);
-create index if not exists workout_exercises_workout_idx on public.workout_exercises (workout_id);
+create index if not exists workout_exercises_user_workout_idx on public.workout_exercises (user_id, workout_id);
 create index if not exists workout_exercises_user_exercise_idx on public.workout_exercises (user_id, exercise_id);
-create index if not exists sets_workout_exercise_idx on public.sets (workout_exercise_id);
+create index if not exists sets_user_workout_exercise_idx on public.sets (user_id, workout_exercise_id);
+-- Older single-column versions of the two indexes above; no longer needed.
+drop index if exists public.workout_exercises_workout_idx;
+drop index if exists public.sets_workout_exercise_idx;
 
 -- ---------------------------------------------------------------------------
 -- The feed: your friends' finished workouts, newest first.
@@ -433,8 +686,9 @@ as $$
       sum(coalesce(s.distance_m, 0)) as total_distance_m,
       sum(coalesce(s.duration_sec, 0))::integer as total_duration_sec
     from public.workouts w
-    join public.workout_exercises we on we.workout_id = w.id
-    join public.sets s on s.workout_exercise_id = we.id and s.completed = 1
+    -- Every join also matches user_id: ids are only unique within one account.
+    join public.workout_exercises we on we.user_id = w.user_id and we.workout_id = w.id
+    join public.sets s on s.user_id = we.user_id and s.workout_exercise_id = we.id and s.completed = 1
     -- Epley est. 1RM, same as estimateOneRepMax() in the app.
     cross join lateral (
       select case
@@ -447,14 +701,14 @@ as $$
       and w.user_id in (select page.user_id from page)
       and we.exercise_id in (
         select we2.exercise_id from public.workout_exercises we2
-        where we2.workout_id in (select page.id from page)
+        where (we2.user_id, we2.workout_id) in (select page.user_id, page.id from page)
       )
     group by w.user_id, w.id, w.started_at, we.exercise_id
   ),
   current_sessions as (
     select s.*, prev.p as prev
     from sessions s
-    join page on page.id = s.workout_id
+    join page on page.user_id = s.user_id and page.id = s.workout_id
     cross join lateral (
       select case when count(*) = 0 then null else jsonb_build_object(
         'max_weight', max(o.max_weight),
@@ -496,7 +750,7 @@ as $$
     )
   from page
   join public.profiles pr on pr.id = page.user_id
-  left join current_sessions c on c.workout_id = page.id
+  left join current_sessions c on c.user_id = page.user_id and c.workout_id = page.id
   left join public.custom_exercises ce on ce.id = c.exercise_id and ce.user_id = page.user_id
   group by page.id, page.user_id, pr.username, page.name, page.started_at, page.finished_at
   order by page.finished_at desc;
@@ -509,7 +763,8 @@ declare
 begin
   foreach f in array array[
     'is_friend(uuid)', 'send_friend_request(uuid)', 'accept_friend_request(uuid)',
-    'remove_friend(uuid)', 'search_users(text)', 'my_friends()', 'friend_feed(bigint, integer)'
+    'remove_friend(uuid)', 'search_users(text)', 'my_friends()', 'friend_feed(bigint, integer)',
+    'block_user(uuid)', 'unblock_user(uuid)', 'my_blocked()', 'report_user(uuid, text)'
   ]
   loop
     execute format('revoke execute on function public.%s from public, anon', f);

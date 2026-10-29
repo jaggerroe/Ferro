@@ -188,7 +188,8 @@ async function push(db: SQLiteDatabase, userId: string) {
     );
     for (let i = 0; i < local.length; i += CHUNK) {
       const chunk = local.slice(i, i + CHUNK).map((r) => ({ ...r, user_id: userId }));
-      const { error } = await client.from(table.name).upsert(chunk, { onConflict: 'id' });
+      // Ids are unique per account (see schema.sql), so a row is matched by account + id.
+      const { error } = await client.from(table.name).upsert(chunk, { onConflict: 'user_id,id' });
       if (error) throw error;
     }
 

@@ -10,6 +10,9 @@ import { supabase } from '@/lib/supabase';
 
 export const USERNAME_RULE = /^[a-z0-9_]{3,20}$/;
 
+/** New passwords need at least this many characters. Set the same number in Supabase's Auth settings. */
+export const MIN_PASSWORD_LENGTH = 8;
+
 /** The signed-in session. `undefined` = still checking, `null` = signed out. */
 export function useSession() {
   const [session, setSession] = useState<Session | null | undefined>(supabase ? undefined : null);
@@ -67,7 +70,9 @@ export async function signUp(email: string, password: string, rawUsername: strin
   if (!USERNAME_RULE.test(username)) {
     throw new AuthMessage('Usernames are 3–20 characters: letters, numbers and underscores.');
   }
-  if (password.length < 6) throw new AuthMessage('Use a password with at least 6 characters.');
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    throw new AuthMessage(`Use a password with at least ${MIN_PASSWORD_LENGTH} characters.`);
+  }
 
   const { data: available, error: checkError } = await client.rpc('username_available', { name: username });
   if (checkError) throw friendly(checkError.message);
@@ -110,6 +115,7 @@ function friendly(message: string) {
   if (m.includes('email not confirmed')) return new AuthMessage('Confirm your email first. Check your inbox for the link.');
   if (m.includes('valid email') || m.includes('invalid email')) return new AuthMessage('That email doesn’t look right.');
   if (m.includes('network') || m.includes('fetch')) return new AuthMessage('Couldn’t reach the server. Check your connection.');
+  if (m.includes('password should be at least')) return new AuthMessage(`Use a password with at least ${MIN_PASSWORD_LENGTH} characters.`);
   if (m.includes('database error saving new user')) return new AuthMessage('That username was just taken. Try another.');
   return new AuthMessage(message);
 }

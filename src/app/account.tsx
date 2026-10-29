@@ -16,7 +16,7 @@ import { Chip } from '@/components/chip';
 import { ThemedText } from '@/components/themed-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { AuthMessage, signIn, signUp, USERNAME_RULE } from '@/lib/auth';
+import { AuthMessage, MIN_PASSWORD_LENGTH, signIn, signUp, USERNAME_RULE } from '@/lib/auth';
 import { isBackendConfigured } from '@/lib/supabase';
 
 type Mode = 'signin' | 'signup';
@@ -35,7 +35,10 @@ export default function AccountScreen() {
   const cleanUsername = username.trim().toLowerCase();
   const usernameOk = USERNAME_RULE.test(cleanUsername);
   const canSubmit =
-    !busy && email.includes('@') && password.length >= 6 && (mode === 'signin' || usernameOk);
+    !busy &&
+    email.includes('@') &&
+    // Signing in still works with an older, shorter password; only new accounts need the minimum.
+    (mode === 'signin' ? password.length > 0 : password.length >= MIN_PASSWORD_LENGTH && usernameOk);
 
   async function submit() {
     if (!canSubmit) return;
@@ -151,7 +154,7 @@ export default function AccountScreen() {
                 <TextInput
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="At least 6 characters"
+                  placeholder={mode === 'signup' ? `At least ${MIN_PASSWORD_LENGTH} characters` : 'Your password'}
                   placeholderTextColor={theme.textSecondary}
                   secureTextEntry
                   textContentType={mode === 'signup' ? 'newPassword' : 'password'}

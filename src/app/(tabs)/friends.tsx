@@ -13,12 +13,19 @@ import { useTheme } from '@/hooks/use-theme';
 import { useSession } from '@/lib/auth';
 import {
   acceptFriendRequest,
+  blockUser,
   FEED_PAGE_SIZE,
+  getBlocked,
   getFriendFeed,
   getMyFriends,
+  MIN_SEARCH_LENGTH,
   removeFriend,
+  REPORT_REASONS,
+  reportUser,
   searchUsers,
   sendFriendRequest,
+  unblockUser,
+  type BlockedUser,
   type FeedWorkout,
   type FoundUser,
   type FriendEntry,
@@ -68,6 +75,7 @@ function SignedInFriends() {
   useSettings(); // re-draw if you switch lb/kg
   const [mode, setMode] = useState<Mode>('feed');
   const [friends, setFriends] = useState<FriendEntry[] | undefined>(undefined);
+  const [blocked, setBlocked] = useState<BlockedUser[]>([]);
   const [feed, setFeed] = useState<FeedWorkout[] | undefined>(undefined);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -77,8 +85,9 @@ function SignedInFriends() {
   /** Loads your friends list and the first page of the feed. */
   const load = useCallback(async () => {
     try {
-      const [list, page] = await Promise.all([getMyFriends(), getFriendFeed()]);
+      const [list, page, blockedList] = await Promise.all([getMyFriends(), getFriendFeed(), getBlocked()]);
       setFriends(list);
+      setBlocked(blockedList);
       setFeed(page);
       setHasMore(page.length === FEED_PAGE_SIZE);
       setError(null);
@@ -151,6 +160,7 @@ function SignedInFriends() {
           incoming={incoming}
           accepted={accepted}
           outgoing={outgoing}
+          blocked={blocked}
           loaded={friends !== undefined}
           onChanged={load}
           onError={setError}
@@ -198,7 +208,8 @@ function FeedView({
   return (
     <>
       {feed.map((item) => (
-        <FeedCard key={item.id} item={item} />
+        // Workout ids are only unique within one account, so the key includes whose it is.
+        <FeedCard key={`${item.userId}:${item.id}`} item={item} />
       ))}
       {hasMore ? (
         <PlainButton
@@ -285,6 +296,7 @@ function FriendsView({
   incoming,
   accepted,
   outgoing,
+  blocked,
   loaded,
   onChanged,
   onError,
@@ -292,6 +304,7 @@ function FriendsView({
   incoming: FriendEntry[];
   accepted: FriendEntry[];
   outgoing: FriendEntry[];
+  blocked: BlockedUser[];
   loaded: boolean;
   onChanged: () => Promise<void>;
   onError: (message: string | null) => void;
@@ -312,10 +325,49 @@ function FriendsView({
     }
   }
 
-  function confirmRemove(friend: FriendEntry) {
-    Alert.alert(`Remove ${friend.username}?`, 'You’ll stop seeing each other’s workouts.', [
+  function confirmRemove(person: FriendEntry) {
+    Alert.alert(`Remove ${person.username}?`, 'You’ll stop seeing each other’s workouts.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => run(friend.id, () => removeFriend(friend.id)) },
+      { text: 'Remove', style: 'destructive', onPress: () => run(person.id, () => removeFriend(person.id)) },
+    ]);
+  }
+
+  function confirmBlock(person: FriendEntry) {
+    Alert.alert(
+      `Block ${person.username}?`,
+      'They won’t be able to find you or send you requests, and you’ll stop seeing each other’s workouts. They aren’t told.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Block', style: 'destructive', onPress: () => run(person.id, () => blockUser(person.id)) },
+      ],
+    );
+  }
+
+  function chooseReportReason(person: FriendEntry) {
+    Alert.alert(`Report ${person.username}?`, 'What’s wrong?', [
+      ...REPORT_REASONS.map((reason) => ({
+        text: reason,
+        onPress: () =>
+          run(person.id, async () => {
+            await reportUser(person.id, reason);
+            Alert.alert('Thanks for reporting', 'You can also block them so they can’t contact you.');
+          }),
+      })),
+      { text: 'Cancel', style: 'cancel' as const },
+    ]);
+  }
+
+  /** The "•••" menu on a friend or request. */
+  function showOptions(person: FriendEntry) {
+    const first =
+      person.status === 'incoming'
+        ? { text: 'Decline request', onPress: () => run(person.id, () => removeFriend(person.id)) }
+        : { text: 'Remove friend', onPress: () => confirmRemove(person) };
+    Alert.alert(person.username, undefined, [
+      first,
+      { text: 'Block', style: 'destructive', onPress: () => confirmBlock(person) },
+      { text: 'Report', onPress: () => chooseReportReason(person) },
+      { text: 'Cancel', style: 'cancel' },
     ]);
   }
 
@@ -327,11 +379,7 @@ function FriendsView({
         <Section title="Requests">
           {incoming.map((f) => (
             <PersonRow key={f.id} username={f.username} detail="Wants to be friends">
-              <PlainButton
-                label="Decline"
-                disabled={busyId === f.id}
-                onPress={() => run(f.id, () => removeFriend(f.id))}
-              />
+              <MoreButton username={f.username} disabled={busyId === f.id} onPress={() => showOptions(f)} />
               <SmallPrimaryButton
                 label="Accept"
                 disabled={busyId === f.id}
@@ -352,7 +400,7 @@ function FriendsView({
         ) : (
           accepted.map((f) => (
             <PersonRow key={f.id} username={f.username} detail={`Friends since ${sinceLabel(f.since)}`}>
-              <PlainButton label="Remove" disabled={busyId === f.id} onPress={() => confirmRemove(f)} />
+              <MoreButton username={f.username} disabled={busyId === f.id} onPress={() => showOptions(f)} />
             </PersonRow>
           ))
         )}
@@ -366,6 +414,20 @@ function FriendsView({
                 label="Cancel"
                 disabled={busyId === f.id}
                 onPress={() => run(f.id, () => removeFriend(f.id))}
+              />
+            </PersonRow>
+          ))}
+        </Section>
+      ) : null}
+
+      {blocked.length > 0 ? (
+        <Section title="Blocked">
+          {blocked.map((b) => (
+            <PersonRow key={b.id} username={b.username}>
+              <PlainButton
+                label="Unblock"
+                disabled={busyId === b.id}
+                onPress={() => run(b.id, () => unblockUser(b.id))}
               />
             </PersonRow>
           ))}
@@ -391,10 +453,11 @@ function FindPeople({
 
   // Search a moment after you stop typing, instead of on every letter.
   const q = query.trim().toLowerCase();
-  const results = q && found?.query === q ? found.users : null;
+  const longEnough = q.length >= MIN_SEARCH_LENGTH;
+  const results = longEnough && found?.query === q ? found.users : null;
 
   useEffect(() => {
-    if (!q) return;
+    if (q.length < MIN_SEARCH_LENGTH) return;
     let alive = true;
     const timer = setTimeout(() => {
       searchUsers(q)
@@ -457,7 +520,11 @@ function FindPeople({
         style={[styles.input, { backgroundColor: theme.backgroundElement, color: theme.text }]}
       />
 
-      {results === null ? null : results.length === 0 ? (
+      {q && !longEnough ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          Type at least {MIN_SEARCH_LENGTH} characters.
+        </ThemedText>
+      ) : results === null ? null : results.length === 0 ? (
         <ThemedText type="small" themeColor="textSecondary">
           No one with a username starting “{q}”.
         </ThemedText>
@@ -561,6 +628,25 @@ function PlainButton({ label, onPress, disabled }: { label: string; onPress: () 
         { backgroundColor: theme.backgroundSelected, opacity: disabled ? 0.5 : pressed ? 0.7 : 1 },
       ]}>
       <ThemedText type="smallBold">{label}</ThemedText>
+    </Pressable>
+  );
+}
+
+/** "•••" button that opens a person's options (remove, block, report). */
+function MoreButton({ username, onPress, disabled }: { username: string; onPress: () => void; disabled?: boolean }) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={`Options for ${username}`}
+      hitSlop={8}
+      style={({ pressed }) => [
+        styles.smallButton,
+        { backgroundColor: theme.backgroundSelected, opacity: disabled ? 0.5 : pressed ? 0.7 : 1 },
+      ]}>
+      <ThemedText type="smallBold">•••</ThemedText>
     </Pressable>
   );
 }

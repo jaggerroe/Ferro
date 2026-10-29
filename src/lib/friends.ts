@@ -30,9 +30,12 @@ export type FriendEntry = {
   since: string;
 };
 
+/** Search needs at least this many characters (the server enforces it too). */
+export const MIN_SEARCH_LENGTH = 3;
+
 /** People whose username starts with `query`. Up to 20, exact match first. */
 export async function searchUsers(query: string): Promise<FoundUser[]> {
-  if (!query.trim()) return [];
+  if (query.trim().length < MIN_SEARCH_LENGTH) return [];
   return (await call<FoundUser[]>('search_users', { q: query })) ?? [];
 }
 
@@ -56,6 +59,32 @@ export async function acceptFriendRequest(userId: string): Promise<void> {
 /** Declines a request, cancels one you sent, or unfriends. */
 export async function removeFriend(userId: string): Promise<void> {
   await call('remove_friend', { other: userId });
+}
+
+// ---- blocking & reporting -------------------------------------------------------
+// Apple requires both in apps where people see each other's content.
+
+export type BlockedUser = { id: string; username: string };
+
+/** Blocks someone: removes any friendship or request, and they can't find or add you. */
+export async function blockUser(userId: string): Promise<void> {
+  await call('block_user', { other: userId });
+}
+
+export async function unblockUser(userId: string): Promise<void> {
+  await call('unblock_user', { other: userId });
+}
+
+export async function getBlocked(): Promise<BlockedUser[]> {
+  return (await call<BlockedUser[]>('my_blocked')) ?? [];
+}
+
+/** Reasons offered in the app when reporting someone. */
+export const REPORT_REASONS = ['Offensive username', 'Inappropriate content', 'Spam or fake account'] as const;
+
+/** Sends a report for you to review in Supabase (Table Editor → reports). */
+export async function reportUser(userId: string, reason: string): Promise<void> {
+  await call('report_user', { other: userId, reason });
 }
 
 // ---- feed ------------------------------------------------------------------------
