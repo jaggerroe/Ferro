@@ -23,13 +23,15 @@ export type HistoryItem = {
 /** All finished workouts, newest first, with their totals. */
 export async function getHistory(db: SQLiteDatabase): Promise<HistoryItem[]> {
   const workouts = await db.getAllAsync<Omit<HistoryItem, 'exercises'>>(
+    // One pass over the sets, grouped by workout (instead of two lookups per workout).
     `SELECT w.id, w.name, w.started_at, w.finished_at,
-       (SELECT COUNT(*) FROM sets s JOIN workout_exercises we ON we.id = s.workout_exercise_id
-          WHERE we.workout_id = w.id) AS setCount,
-       COALESCE((SELECT SUM(COALESCE(s.weight, 0) * COALESCE(s.reps, 0)) FROM sets s
-          JOIN workout_exercises we ON we.id = s.workout_exercise_id WHERE we.workout_id = w.id), 0) AS volume
+       COUNT(s.id) AS setCount,
+       COALESCE(SUM(COALESCE(s.weight, 0) * COALESCE(s.reps, 0)), 0) AS volume
      FROM workouts w
+     LEFT JOIN workout_exercises we ON we.workout_id = w.id
+     LEFT JOIN sets s ON s.workout_exercise_id = we.id
      WHERE w.finished_at IS NOT NULL
+     GROUP BY w.id
      ORDER BY w.started_at DESC`,
   );
 

@@ -1,11 +1,11 @@
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, FlatList, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 
 import { Avatar } from '@/components/avatar';
 import { Chip } from '@/components/chip';
 import { PlaceholderCard } from '@/components/placeholder-card';
-import { Screen } from '@/components/screen';
+import { ListGap, listContentStyle, Screen, ScreenFrame } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -127,10 +127,9 @@ function SignedInFriends() {
   const accepted = friends?.filter((f) => f.status === 'friends') ?? [];
   const outgoing = friends?.filter((f) => f.status === 'outgoing') ?? [];
 
-  return (
-    <Screen
-      title="Friends"
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}>
+  // The Feed/Friends switch and any error, shown at the top of both views.
+  const top = (
+    <>
       <View style={styles.switcher}>
         <Chip label="Feed" selected={mode === 'feed'} onPress={() => setMode('feed')} />
         <Chip
@@ -139,85 +138,92 @@ function SignedInFriends() {
           onPress={() => setMode('friends')}
         />
       </View>
-
       {error ? (
         <ThemedText type="smallBold" themeColor="danger">
           {error} Pull down to try again.
         </ThemedText>
       ) : null}
+    </>
+  );
+  // Nothing loaded at all yet because of an error: just show the error.
+  const failedFirstLoad = error !== null && friends === undefined;
+  const refreshControl = <RefreshControl refreshing={refreshing} onRefresh={refresh} />;
 
-      {error && friends === undefined ? null : mode === 'feed' ? (
-        <FeedView
-          feed={feed}
-          hasFriends={accepted.length > 0}
-          hasMore={hasMore}
-          loadingMore={loadingMore}
-          onLoadMore={loadMore}
-          onFindFriends={() => setMode('friends')}
-        />
-      ) : (
-        <FriendsView
-          incoming={incoming}
-          accepted={accepted}
-          outgoing={outgoing}
-          blocked={blocked}
-          loaded={friends !== undefined}
-          onChanged={load}
-          onError={setError}
-        />
-      )}
-    </Screen>
+  if (mode === 'friends') {
+    return (
+      <Screen title="Friends" refreshControl={refreshControl}>
+        {top}
+        {failedFirstLoad ? null : (
+          <FriendsView
+            incoming={incoming}
+            accepted={accepted}
+            outgoing={outgoing}
+            blocked={blocked}
+            loaded={friends !== undefined}
+            onChanged={load}
+            onError={setError}
+          />
+        )}
+      </Screen>
+    );
+  }
+
+  // The feed is a FlatList: it only draws the cards near the screen, and it
+  // loads the next page by itself as you get close to the bottom.
+  return (
+    <ScreenFrame title="Friends">
+      <FlatList
+        data={failedFirstLoad ? [] : (feed ?? [])}
+        // Workout ids are only unique within one account, so the key includes whose it is.
+        keyExtractor={(item) => `${item.userId}:${item.id}`}
+        renderItem={({ item }) => <FeedCard item={item} />}
+        ItemSeparatorComponent={ListGap}
+        ListHeaderComponent={
+          <View style={styles.listHeader}>
+            {top}
+            {failedFirstLoad ? null : (
+              <FeedEmpty feed={feed} hasFriends={accepted.length > 0} onFindFriends={() => setMode('friends')} />
+            )}
+          </View>
+        }
+        ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.spinner} /> : null}
+        onEndReached={() => {
+          if (hasMore) loadMore();
+        }}
+        onEndReachedThreshold={0.5}
+        refreshControl={refreshControl}
+        contentContainerStyle={listContentStyle}
+        initialNumToRender={5}
+      />
+    </ScreenFrame>
   );
 }
 
 // ---- Feed -----------------------------------------------------------------------
 
-function FeedView({
+/** What the feed shows above (or instead of) the cards: a spinner while loading, or an empty state. */
+function FeedEmpty({
   feed,
   hasFriends,
-  hasMore,
-  loadingMore,
-  onLoadMore,
   onFindFriends,
 }: {
   feed: FeedWorkout[] | undefined;
   hasFriends: boolean;
-  hasMore: boolean;
-  loadingMore: boolean;
-  onLoadMore: () => void;
   onFindFriends: () => void;
 }) {
   if (feed === undefined) return <ActivityIndicator style={styles.spinner} />;
-
-  if (feed.length === 0) {
-    return (
-      <>
-        <PlaceholderCard
-          title={hasFriends ? 'Nothing here yet' : 'No friends yet'}
-          body={
-            hasFriends
-              ? 'When your friends finish a workout, it shows up here with any PRs they hit.'
-              : 'Add friends by their username and their finished workouts show up here.'
-          }
-        />
-        {hasFriends ? null : <PrimaryButton label="Find friends" onPress={onFindFriends} />}
-      </>
-    );
-  }
-
+  if (feed.length > 0) return null;
   return (
     <>
-      {feed.map((item) => (
-        // Workout ids are only unique within one account, so the key includes whose it is.
-        <FeedCard key={`${item.userId}:${item.id}`} item={item} />
-      ))}
-      {hasMore ? (
-        <PlainButton
-          label={loadingMore ? 'Loading…' : 'Show older workouts'}
-          onPress={onLoadMore}
-          disabled={loadingMore}
-        />
-      ) : null}
+      <PlaceholderCard
+        title={hasFriends ? 'Nothing here yet' : 'No friends yet'}
+        body={
+          hasFriends
+            ? 'When your friends finish a workout, it shows up here with any PRs they hit.'
+            : 'Add friends by their username and their finished workouts show up here.'
+        }
+      />
+      {hasFriends ? null : <PrimaryButton label="Find friends" onPress={onFindFriends} />}
     </>
   );
 }
@@ -670,6 +676,7 @@ function sinceLabel(iso: string) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   switcher: { flexDirection: 'row', gap: Spacing.two },
+  listHeader: { gap: Spacing.three, marginBottom: Spacing.three },
   spinner: { marginVertical: Spacing.four },
 
   card: { borderRadius: 16, padding: Spacing.three, gap: 2 },

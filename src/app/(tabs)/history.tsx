@@ -1,9 +1,9 @@
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, SectionList, StyleSheet, View } from 'react-native';
 
 import { PlaceholderCard } from '@/components/placeholder-card';
-import { Screen } from '@/components/screen';
+import { ListGap, listContentStyle, Screen, ScreenFrame } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -32,45 +32,58 @@ export default function HistoryScreen() {
     return (id: string) => map.get(id) ?? 'Unknown exercise';
   }, [exercises]);
 
-  // Group into months: [{ month: 'October 2026', items: [...] }, ...]
-  const months = useMemo(() => {
-    const groups: { month: string; items: HistoryItem[] }[] = [];
+  // Group into months: [{ title: 'October 2026', data: [...] }, ...] (the shape SectionList wants).
+  const sections = useMemo(() => {
+    const groups: { title: string; data: HistoryItem[] }[] = [];
     for (const item of history ?? []) {
       const month = monthLabel(item.started_at);
       const last = groups[groups.length - 1];
-      if (last && last.month === month) last.items.push(item);
-      else groups.push({ month, items: [item] });
+      if (last && last.title === month) last.data.push(item);
+      else groups.push({ title: month, data: [item] });
     }
     return groups;
   }, [history]);
 
   if (history === undefined) return <Screen title="History" />;
 
+  // A SectionList only draws the cards near the screen (plus a few ahead), so
+  // opening History stays quick even with hundreds of workouts.
   return (
-    <Screen title="History">
-      {history.length === 0 ? (
-        <PlaceholderCard
-          title="No workouts yet"
-          body="Finish a workout from the Workout tab and it shows up here, newest first."
-        />
-      ) : (
-        <ThemedText type="small" themeColor="textSecondary">
-          {history.length} {history.length === 1 ? 'workout' : 'workouts'} logged
-        </ThemedText>
-      )}
-
-      {months.map((group) => (
-        <View key={group.month} style={styles.month}>
+    <ScreenFrame title="History">
+      <SectionList
+        sections={sections}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => <HistoryCard item={item} nameOf={nameOf} />}
+        renderSectionHeader={({ section }) => (
           <ThemedText type="smallBold" themeColor="accent" style={styles.monthTitle}>
-            {group.month}
+            {section.title}
           </ThemedText>
-          {group.items.map((item) => (
-            <HistoryCard key={item.id} item={item} nameOf={nameOf} />
-          ))}
-        </View>
-      ))}
-    </Screen>
+        )}
+        // Month headings scroll with the list, like before.
+        stickySectionHeadersEnabled={false}
+        ItemSeparatorComponent={SmallGap}
+        ListHeaderComponent={
+          history.length === 0 ? (
+            <PlaceholderCard
+              title="No workouts yet"
+              body="Finish a workout from the Workout tab and it shows up here, newest first."
+            />
+          ) : (
+            <ThemedText type="small" themeColor="textSecondary">
+              {history.length} {history.length === 1 ? 'workout' : 'workouts'} logged
+            </ThemedText>
+          )
+        }
+        contentContainerStyle={listContentStyle}
+        initialNumToRender={8}
+      />
+    </ScreenFrame>
   );
+}
+
+/** 8 px between cards in the same month. */
+function SmallGap() {
+  return <ListGap size={Spacing.two} />;
 }
 
 function HistoryCard({ item, nameOf }: { item: HistoryItem; nameOf: (id: string) => string }) {
@@ -126,8 +139,13 @@ function HistoryCard({ item, nameOf }: { item: HistoryItem; nameOf: (id: string)
 }
 
 const styles = StyleSheet.create({
-  month: { gap: Spacing.two },
-  monthTitle: { textTransform: 'uppercase', letterSpacing: 1, fontSize: 12, marginTop: Spacing.two },
+  monthTitle: {
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    fontSize: 12,
+    marginTop: Spacing.four,
+    marginBottom: Spacing.two,
+  },
   card: { borderRadius: 16, padding: Spacing.three, gap: 2 },
   cardTop: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: Spacing.two },
   cardTitle: { flex: 1, fontSize: 17, lineHeight: 22, fontWeight: 700 },

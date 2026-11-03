@@ -1,11 +1,11 @@
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 
 import { Chip } from '@/components/chip';
 import { LineChart } from '@/components/line-chart';
 import { PlaceholderCard } from '@/components/placeholder-card';
-import { Screen } from '@/components/screen';
+import { ListGap, listContentStyle, Screen, ScreenFrame } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
@@ -42,29 +42,38 @@ export default function ProgressScreen() {
 
   if (byExercise === undefined) return <Screen title="Progress" />;
 
+  // A FlatList only draws the cards (and their little charts) near the
+  // screen, so the tab stays smooth however many exercises you've done.
   return (
-    <Screen title="Progress">
-      {rows.length === 0 ? (
-        <PlaceholderCard
-          title="Nothing to chart yet"
-          body="Finish a few workouts and your progress for each exercise shows up here, with charts and personal records."
-        />
-      ) : (
-        <View style={styles.sortRow}>
-          <ThemedText type="small" themeColor="textSecondary">
-            {rows.length} {rows.length === 1 ? 'exercise' : 'exercises'}
-          </ThemedText>
-          <View style={styles.chips}>
-            <Chip label="Recent" selected={sort === 'recent'} onPress={() => setSort('recent')} />
-            <Chip label="Most done" selected={sort === 'most'} onPress={() => setSort('most')} />
-          </View>
-        </View>
-      )}
-
-      {rows.map((row) => (
-        <ProgressCard key={row.exerciseId} row={row} />
-      ))}
-    </Screen>
+    <ScreenFrame title="Progress">
+      <FlatList
+        data={rows}
+        keyExtractor={(row) => row.exerciseId}
+        renderItem={({ item }) => <ProgressCard row={item} />}
+        ItemSeparatorComponent={ListGap}
+        ListHeaderComponent={
+          rows.length === 0 ? (
+            <PlaceholderCard
+              title="Nothing to chart yet"
+              body="Finish a few workouts and your progress for each exercise shows up here, with charts and personal records."
+            />
+          ) : (
+            <View style={styles.sortRow}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {rows.length} {rows.length === 1 ? 'exercise' : 'exercises'}
+              </ThemedText>
+              <View style={styles.chips}>
+                <Chip label="Recent" selected={sort === 'recent'} onPress={() => setSort('recent')} />
+                <Chip label="Most done" selected={sort === 'most'} onPress={() => setSort('most')} />
+              </View>
+            </View>
+          )
+        }
+        ListHeaderComponentStyle={styles.header}
+        contentContainerStyle={listContentStyle}
+        initialNumToRender={8}
+      />
+    </ScreenFrame>
   );
 }
 
@@ -116,6 +125,7 @@ function ProgressCard({ row }: { row: Row }) {
 }
 
 const styles = StyleSheet.create({
+  header: { marginBottom: Spacing.three },
   sortRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   chips: { flexDirection: 'row', gap: Spacing.two },
   card: { borderRadius: 16, padding: Spacing.three, flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
