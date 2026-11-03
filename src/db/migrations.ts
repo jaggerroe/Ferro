@@ -90,6 +90,63 @@ const MIGRATIONS: string[] = [
     value  TEXT NOT NULL                 -- stored as JSON, e.g. "kg" or 120
   );
   `,
+
+  // Version 4: a list of what changed since the last backup, so backups only
+  // send changes instead of your whole history (see src/lib/sync.ts).
+  // Triggers add a row to sync_changes whenever a backed-up row is added,
+  // edited or deleted (including sets deleted along with their workout).
+  // Saving the same row again replaces its entry, so 50 edits to one set
+  // are still one entry.
+  `
+  CREATE TABLE sync_changes (
+    seq      INTEGER PRIMARY KEY AUTOINCREMENT,  -- increases with every change
+    tbl      TEXT NOT NULL,
+    row_id   TEXT NOT NULL,
+    deleted  INTEGER NOT NULL DEFAULT 0,          -- 1 = row was deleted
+    UNIQUE (tbl, row_id) ON CONFLICT REPLACE
+  );
+
+  CREATE TRIGGER sync_custom_exercises_insert AFTER INSERT ON custom_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('custom_exercises', NEW.id, 0); END;
+  CREATE TRIGGER sync_custom_exercises_update AFTER UPDATE ON custom_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('custom_exercises', NEW.id, 0); END;
+  CREATE TRIGGER sync_custom_exercises_delete AFTER DELETE ON custom_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('custom_exercises', OLD.id, 1); END;
+  CREATE TRIGGER sync_workouts_insert AFTER INSERT ON workouts
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('workouts', NEW.id, 0); END;
+  CREATE TRIGGER sync_workouts_update AFTER UPDATE ON workouts
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('workouts', NEW.id, 0); END;
+  CREATE TRIGGER sync_workouts_delete AFTER DELETE ON workouts
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('workouts', OLD.id, 1); END;
+  CREATE TRIGGER sync_workout_exercises_insert AFTER INSERT ON workout_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('workout_exercises', NEW.id, 0); END;
+  CREATE TRIGGER sync_workout_exercises_update AFTER UPDATE ON workout_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('workout_exercises', NEW.id, 0); END;
+  CREATE TRIGGER sync_workout_exercises_delete AFTER DELETE ON workout_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('workout_exercises', OLD.id, 1); END;
+  CREATE TRIGGER sync_sets_insert AFTER INSERT ON sets
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('sets', NEW.id, 0); END;
+  CREATE TRIGGER sync_sets_update AFTER UPDATE ON sets
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('sets', NEW.id, 0); END;
+  CREATE TRIGGER sync_sets_delete AFTER DELETE ON sets
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('sets', OLD.id, 1); END;
+  CREATE TRIGGER sync_routines_insert AFTER INSERT ON routines
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('routines', NEW.id, 0); END;
+  CREATE TRIGGER sync_routines_update AFTER UPDATE ON routines
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('routines', NEW.id, 0); END;
+  CREATE TRIGGER sync_routines_delete AFTER DELETE ON routines
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('routines', OLD.id, 1); END;
+  CREATE TRIGGER sync_routine_exercises_insert AFTER INSERT ON routine_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('routine_exercises', NEW.id, 0); END;
+  CREATE TRIGGER sync_routine_exercises_update AFTER UPDATE ON routine_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('routine_exercises', NEW.id, 0); END;
+  CREATE TRIGGER sync_routine_exercises_delete AFTER DELETE ON routine_exercises
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('routine_exercises', OLD.id, 1); END;
+
+  -- Changes made before this update weren't tracked, so the next backup
+  -- uploads everything once to be safe.
+  INSERT OR REPLACE INTO settings (key, value) VALUES ('sync.needsFull', 'true');
+  `,
 ];
 
 export const DATABASE_NAME = 'ferro.db';
