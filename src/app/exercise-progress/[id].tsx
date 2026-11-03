@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -15,9 +15,8 @@ import {
   changeLabel,
   metricsFor,
   recordsFor,
-  toSessions,
   trimNumber,
-  useSetPointsByExercise,
+  useExerciseSessions,
   type Session,
 } from '@/lib/progress';
 import { formatWeight, formatWeightRounded, useSettings } from '@/lib/settings';
@@ -31,13 +30,14 @@ const CHART_SESSIONS = 20;
 export default function ExerciseProgressScreen() {
   const theme = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const byExercise = useSetPointsByExercise();
+  // Only this exercise's sessions (not every set you've ever done).
+  const loaded = useExerciseSessions(id);
   useSettings(); // re-draw if you switch lb/kg
   const exercises = useAllExercises();
   const exercise = exercises.find((e) => e.id === id);
   const kind: ExerciseKind = exercise?.kind ?? 'strength';
 
-  const sessions = useMemo(() => toSessions(byExercise?.get(id ?? '') ?? []), [byExercise, id]);
+  const sessions = loaded ?? [];
   const metrics = metricsFor(kind, sessions);
   const [metricKey, setMetricKey] = useState<string | null>(null);
   const metric = metrics.find((m) => m.key === metricKey) ?? metrics[0];
@@ -69,7 +69,7 @@ export default function ExerciseProgressScreen() {
             .join('  ·  ')}
         </ThemedText>
 
-        {byExercise !== undefined && sessions.length === 0 ? (
+        {loaded !== undefined && sessions.length === 0 ? (
           <ThemedView type="backgroundElement" style={styles.card}>
             <ThemedText type="small" themeColor="textSecondary">
               No finished workouts with this exercise yet.
