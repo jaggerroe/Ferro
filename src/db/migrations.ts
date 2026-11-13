@@ -198,6 +198,48 @@ const MIGRATIONS: string[] = [
   CREATE TRIGGER sync_doses_delete AFTER DELETE ON doses
     BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('doses', OLD.id, 1); END;
   `,
+
+  // Version 6: side effects and lab results (Meds tab → Check-ins / Labs,
+  // see src/lib/health.ts). Private and backed up, like doses.
+  `
+  -- How you felt: one row per symptom per day you rated it.
+  CREATE TABLE check_ins (
+    id          TEXT PRIMARY KEY NOT NULL,
+    day         TEXT NOT NULL,               -- 'YYYY-MM-DD' on the phone's calendar
+    tag         TEXT NOT NULL,               -- e.g. 'Dry lips', or one you typed
+    severity    INTEGER NOT NULL,            -- 1 mild, 2 moderate, 3 bad
+    created_at  INTEGER NOT NULL,
+    UNIQUE (day, tag)
+  );
+  CREATE INDEX idx_check_ins_day ON check_ins(day);
+
+  -- Blood work: one row per marker per test.
+  CREATE TABLE lab_results (
+    id          TEXT PRIMARY KEY NOT NULL,
+    drawn_at    INTEGER NOT NULL,            -- the day of the test (noon that day)
+    marker      TEXT NOT NULL,               -- e.g. 'ALT', 'Triglycerides'
+    value       REAL NOT NULL,
+    unit        TEXT NOT NULL,               -- e.g. 'mg/dL'
+    ref_low     REAL,                        -- normal range from your lab report, if given
+    ref_high    REAL,
+    notes       TEXT,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX idx_lab_results_marker ON lab_results(marker, drawn_at);
+
+  CREATE TRIGGER sync_check_ins_insert AFTER INSERT ON check_ins
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('check_ins', NEW.id, 0); END;
+  CREATE TRIGGER sync_check_ins_update AFTER UPDATE ON check_ins
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('check_ins', NEW.id, 0); END;
+  CREATE TRIGGER sync_check_ins_delete AFTER DELETE ON check_ins
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('check_ins', OLD.id, 1); END;
+  CREATE TRIGGER sync_lab_results_insert AFTER INSERT ON lab_results
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('lab_results', NEW.id, 0); END;
+  CREATE TRIGGER sync_lab_results_update AFTER UPDATE ON lab_results
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('lab_results', NEW.id, 0); END;
+  CREATE TRIGGER sync_lab_results_delete AFTER DELETE ON lab_results
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('lab_results', OLD.id, 1); END;
+  `,
 ];
 
 export const DATABASE_NAME = 'ferro.db';

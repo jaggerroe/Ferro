@@ -3,7 +3,9 @@ import { useSQLiteContext } from 'expo-sqlite';
 import { useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
+import { CheckInsView } from '@/components/check-ins-view';
 import { Chip } from '@/components/chip';
+import { LabsView } from '@/components/labs-view';
 import { PlaceholderCard } from '@/components/placeholder-card';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
@@ -28,36 +30,48 @@ import { saveSetting, useSettings } from '@/lib/settings';
 
 /**
  * The Meds tab (only shown when it's turned on in Profile).
- * "Today" is what's due today and what you've taken; "All" lists everything
- * you've set up. Tapping something opens it to log a dose or edit it.
+ * - Today: what's due today and what you've taken.
+ * - Check-ins: rate side effects (dry lips, joint aches, ...) day by day.
+ * - Labs: blood work results, charted per marker.
+ * - All: everything you've set up.
+ * Tapping something opens it to log a dose or edit it.
  */
 export default function MedsScreen() {
   const data = useMedsToday();
-  const [view, setView] = useState<'today' | 'all'>('today');
+  const [view, setView] = useState<'today' | 'check-ins' | 'labs' | 'all'>('today');
 
   if (data === undefined) return <Screen title="Meds" />;
 
-  if (data.compounds.length === 0) {
-    return (
-      <Screen title="Meds">
-        <PlaceholderCard
-          eyebrow="Meds & supplements"
-          title="Track what you take"
-          body="Add anything you take, like a prescription, a supplement or an injection. Set when you take it, then tick it off each day. Only you can see this; it's never shared with friends."
-        />
-        <AddButton label="Add your first one" />
-      </Screen>
-    );
-  }
+  // Nothing added yet: Today and All just invite you to add something.
+  const empty = data.compounds.length === 0 && (view === 'today' || view === 'all');
 
   return (
     <Screen title="Meds">
       <View style={styles.chips}>
         <Chip label="Today" selected={view === 'today'} onPress={() => setView('today')} />
+        <Chip label="Check-ins" selected={view === 'check-ins'} onPress={() => setView('check-ins')} />
+        <Chip label="Labs" selected={view === 'labs'} onPress={() => setView('labs')} />
         <Chip label="All" selected={view === 'all'} onPress={() => setView('all')} />
       </View>
 
-      {view === 'today' ? <TodayView slots={data.slots} asNeeded={data.asNeeded} /> : <AllView compounds={data.compounds} />}
+      {empty ? (
+        <>
+          <PlaceholderCard
+            eyebrow="Meds & supplements"
+            title="Track what you take"
+            body="Add anything you take, like a prescription, a supplement or an injection. Set when you take it, then tick it off each day. Only you can see this; it's never shared with friends."
+          />
+          <AddButton label="Add your first one" />
+        </>
+      ) : view === 'today' ? (
+        <TodayView slots={data.slots} asNeeded={data.asNeeded} />
+      ) : view === 'check-ins' ? (
+        <CheckInsView />
+      ) : view === 'labs' ? (
+        <LabsView />
+      ) : (
+        <AllView compounds={data.compounds} />
+      )}
 
       <ThemedText type="small" themeColor="textSecondary" style={styles.footnote}>
         Only you can see this. It backs up to your account but is never shared with friends.
@@ -365,7 +379,7 @@ function warn(err: unknown) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  chips: { flexDirection: 'row', gap: Spacing.two },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
   group: { gap: Spacing.two },
   eyebrow: { textTransform: 'uppercase', letterSpacing: 1, fontSize: 12, paddingHorizontal: Spacing.one },
   progressCard: { borderRadius: 16, padding: Spacing.three, gap: Spacing.one },

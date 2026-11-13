@@ -929,3 +929,91 @@ begin
   end loop;
 end;
 $$;
+
+-- ---------------------------------------------------------------------------
+-- Side effects and lab results (Meds tab → Check-ins / Labs). Added Nov 13, 2026.
+--
+-- PRIVATE, like compounds and doses: "Own rows only", no friend policies,
+-- never in friend_feed. Don't add friend access here.
+-- No unique (day, tag) rule on the server on purpose: re-rating a symptom
+-- can upload the new row before the old one's delete, and a rule would
+-- block that backup. The phone keeps them unique.
+-- ---------------------------------------------------------------------------
+create table if not exists public.check_ins (
+  id          text not null,
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  day         text not null,
+  tag         text not null,
+  severity    integer not null,
+  created_at  bigint not null,
+  primary key (user_id, id)
+);
+
+create table if not exists public.lab_results (
+  id          text not null,
+  user_id     uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  drawn_at    bigint not null,
+  marker      text not null,
+  value       double precision not null,
+  unit        text not null,
+  ref_low     double precision,
+  ref_high    double precision,
+  notes       text,
+  created_at  bigint not null,
+  primary key (user_id, id)
+);
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['check_ins', 'lab_results']
+  loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "Own rows only" on public.%I', t);
+    execute format(
+      'create policy "Own rows only" on public.%I for all to authenticated '
+      'using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))', t);
+  end loop;
+end;
+$$;
+
+-- Limits. Number boxes allow 9 characters, so any typo stays under 1e9.
+do $$
+declare
+  rule text[];
+begin
+  foreach rule slice 1 in array array[
+    ['check_ins', 'check_ins_limits',
+      $c$char_length(id) <= 64 and day ~ '^\d{4}-\d{2}-\d{2}$'
+        and char_length(tag) between 1 and 40 and severity between 1 and 3 and created_at > 0$c$],
+    ['lab_results', 'lab_results_limits',
+      $c$char_length(id) <= 64 and drawn_at > 0
+        and char_length(marker) between 1 and 40 and char_length(unit) between 1 and 20
+        and value between 0 and 1000000000
+        and (ref_low is null or ref_low between 0 and 1000000000)
+        and (ref_high is null or ref_high between 0 and 1000000000)
+        and char_length(coalesce(notes, '')) <= 2000 and created_at > 0$c$]
+  ]
+  loop
+    if not exists (select 1 from pg_constraint where conname = rule[2]) then
+      execute format('alter table public.%I add constraint %I check (%s)', rule[1], rule[2], rule[3]);
+    end if;
+  end loop;
+end;
+$$;
+
+-- Row caps: 100,000 check-ins is ~10 symptoms a day for 27 years.
+do $$
+declare
+  rule text[];
+begin
+  foreach rule slice 1 in array array[['check_ins', '100000'], ['lab_results', '20000']]
+  loop
+    execute format('drop trigger if exists row_cap on public.%I', rule[1]);
+    execute format(
+      'create trigger row_cap after insert on public.%I referencing new table as new_rows '
+      'for each statement execute function public.enforce_row_cap(%L)', rule[1], rule[2]);
+  end loop;
+end;
+$$;

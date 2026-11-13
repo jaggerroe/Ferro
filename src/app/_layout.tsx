@@ -45,6 +45,8 @@ export default function RootLayout() {
           {/* Meds tab: add/edit something you take, and log a dose. */}
           <Stack.Screen name="compound" options={{ presentation: 'modal' }} />
           <Stack.Screen name="log-dose" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="lab-result" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="lab-marker" options={{ presentation: 'modal' }} />
         </Stack>
         {/* Schedules meds reminders; tapping one opens the Meds tab. After the
             Stack so the router is ready when it navigates. */}
