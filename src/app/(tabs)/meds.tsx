@@ -10,6 +10,7 @@ import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { turnOnMedReminders } from '@/lib/med-reminders';
 import {
   deleteDose,
   describeSchedule,
@@ -23,6 +24,7 @@ import {
   type Compound,
   type Slot,
 } from '@/lib/meds';
+import { saveSetting, useSettings } from '@/lib/settings';
 
 /**
  * The Meds tab (only shown when it's turned on in Profile).
@@ -85,6 +87,8 @@ function TodayView({ slots, asNeeded }: { slots: Slot[]; asNeeded: { compound: C
         <PlaceholderCard title="Nothing scheduled today" body="Things you take as needed are below. Tap one to log it." />
       )}
 
+      {slots.length > 0 ? <RemindersCard /> : null}
+
       {groups.map((g) => (
         <View key={g.title} style={styles.group}>
           <ThemedText type="smallBold" themeColor="textSecondary" style={styles.eyebrow}>
@@ -126,6 +130,41 @@ function ProgressCard({ done, total, next }: { done: number; total: number; next
           Next: {next.compound.name} · {formatClock(next.time)}
         </ThemedText>
       ) : null}
+    </ThemedView>
+  );
+}
+
+/** Offers to turn on reminders, until you do or tap "Not now". (Also in Profile.) */
+function RemindersCard() {
+  const theme = useTheme();
+  const db = useSQLiteContext();
+  const { medReminders, medRemindersCardHidden } = useSettings();
+  if (medReminders || medRemindersCardHidden) return null;
+  return (
+    <ThemedView type="backgroundElement" style={styles.progressCard}>
+      <ThemedText style={styles.rowTitle}>Want reminders?</ThemedText>
+      <ThemedText type="small" themeColor="textSecondary">
+        Get a notification at your times, unless you&apos;ve already logged it. It never shows what you take.
+      </ThemedText>
+      <View style={styles.cardButtons}>
+        <Pressable
+          onPress={() => turnOnMedReminders(db)}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.logPill, { backgroundColor: theme.accent, opacity: pressed ? 0.8 : 1 }]}>
+          <ThemedText type="smallBold" style={{ color: theme.onAccent }}>
+            Turn on
+          </ThemedText>
+        </Pressable>
+        <Pressable
+          onPress={() => saveSetting(db, 'medRemindersCardHidden', true)}
+          accessibilityRole="button"
+          hitSlop={8}
+          style={styles.logPill}>
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            Not now
+          </ThemedText>
+        </Pressable>
+      </View>
     </ThemedView>
   );
 }
@@ -338,6 +377,7 @@ const styles = StyleSheet.create({
   check: { width: 28, height: 28, borderRadius: 14, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
   checkMark: { fontSize: 15, lineHeight: 18, fontWeight: 800 },
   logPill: { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 8 },
+  cardButtons: { flexDirection: 'row', gap: Spacing.two, marginTop: Spacing.two },
   addButton: { borderRadius: 14, paddingVertical: Spacing.three, alignItems: 'center' },
   addLabel: { fontSize: 17, fontWeight: 800 },
   footnote: { textAlign: 'center', paddingHorizontal: Spacing.three, marginTop: Spacing.two },

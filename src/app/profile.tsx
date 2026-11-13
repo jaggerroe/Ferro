@@ -12,6 +12,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { deleteAccount, signOut, useSession, useUsername } from '@/lib/auth';
 import { useHistory } from '@/lib/history';
+import { turnOffMedReminders, turnOnMedReminders } from '@/lib/med-reminders';
 import { REST_PRESETS, setRestTarget } from '@/lib/rest';
 import { useRoutines } from '@/lib/routines';
 import { saveSetting, useSettings, type Settings } from '@/lib/settings';
@@ -120,6 +121,15 @@ export default function ProfileScreen() {
             <Chip label="Off" selected={!settings.showMedsTab} onPress={() => set('showMedsTab', false)} />
             <Chip label="Show Meds tab" selected={settings.showMedsTab} onPress={() => set('showMedsTab', true)} />
           </SettingRow>
+
+          {settings.showMedsTab ? (
+            <SettingRow
+              label="Meds reminders"
+              hint="A notification at each time you've set, unless you've already logged it. It never shows what you take.">
+              <Chip label="Off" selected={!settings.medReminders} onPress={() => turnOffMedReminders(db)} />
+              <Chip label="On" selected={settings.medReminders} onPress={() => turnOnMedReminders(db)} />
+            </SettingRow>
+          ) : null}
         </Section>
 
         {session ? (

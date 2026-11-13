@@ -4,6 +4,7 @@ import { SQLiteProvider } from 'expo-sqlite';
 import { StatusBar } from 'expo-status-bar';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { MedRemindersManager } from '@/components/med-reminders-manager';
 import { SyncManager } from '@/components/sync-manager';
 import { initDatabase } from '@/db/init';
 import { DATABASE_NAME } from '@/db/migrations';
@@ -45,6 +46,9 @@ export default function RootLayout() {
           <Stack.Screen name="compound" options={{ presentation: 'modal' }} />
           <Stack.Screen name="log-dose" options={{ presentation: 'modal' }} />
         </Stack>
+        {/* Schedules meds reminders; tapping one opens the Meds tab. After the
+            Stack so the router is ready when it navigates. */}
+        <MedRemindersManager />
       </SQLiteProvider>
     </ThemeProvider>
   );

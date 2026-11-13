@@ -26,9 +26,23 @@ export type Settings = {
    * Routines' place and your routines move into the Workout tab.
    */
   showMedsTab: boolean;
+  /**
+   * Notifications at your meds times (see med-reminders.ts). Off until you
+   * turn it on. Not backed up: it depends on this phone's notification permission.
+   */
+  medReminders: boolean;
+  /** You tapped "Not now" on the Meds tab's "Turn on reminders" card, so stop showing it. */
+  medRemindersCardHidden: boolean;
 };
 
-const DEFAULTS: Settings = { weightUnit: 'lb', restSec: 120, theme: 'system', showMedsTab: false };
+const DEFAULTS: Settings = {
+  weightUnit: 'lb',
+  restSec: 120,
+  theme: 'system',
+  showMedsTab: false,
+  medReminders: false,
+  medRemindersCardHidden: false,
+};
 
 let state: Settings = DEFAULTS;
 const listeners = new Set<() => void>();
@@ -81,6 +95,8 @@ function pickValid(s: Partial<Settings>): Partial<Settings> {
   if (s.restSec === null || (typeof s.restSec === 'number' && s.restSec > 0)) out.restSec = s.restSec;
   if (s.theme === 'system' || s.theme === 'light' || s.theme === 'dark') out.theme = s.theme;
   if (typeof s.showMedsTab === 'boolean') out.showMedsTab = s.showMedsTab;
+  if (typeof s.medReminders === 'boolean') out.medReminders = s.medReminders;
+  if (typeof s.medRemindersCardHidden === 'boolean') out.medRemindersCardHidden = s.medRemindersCardHidden;
   return out;
 }
 
