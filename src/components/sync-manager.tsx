@@ -4,6 +4,7 @@ import { AppState } from 'react-native';
 
 import { useSession } from '@/lib/auth';
 import { useCustomExercisesVersion } from '@/lib/custom-exercises';
+import { useMedsVersion } from '@/lib/meds';
 import { useSettings } from '@/lib/settings';
 import { loadSyncStatus, syncNow } from '@/lib/sync';
 import { useWorkoutsVersion } from '@/lib/workouts';
@@ -23,6 +24,7 @@ export function SyncManager() {
   const userId = session?.user.id;
   const workoutsVersion = useWorkoutsVersion();
   const customVersion = useCustomExercisesVersion();
+  const medsVersion = useMedsVersion();
   const settings = useSettings();
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const firstChange = useRef(true);
@@ -48,7 +50,7 @@ export function SyncManager() {
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
-  }, [db, userId, workoutsVersion, customVersion, settings]);
+  }, [db, userId, workoutsVersion, customVersion, medsVersion, settings]);
 
   // Leaving the app: back up now.
   useEffect(() => {

@@ -147,6 +147,57 @@ const MIGRATIONS: string[] = [
   -- uploads everything once to be safe.
   INSERT OR REPLACE INTO settings (key, value) VALUES ('sync.needsFull', 'true');
   `,
+
+  // Version 5: meds & supplements (the optional Meds tab, see src/lib/meds.ts).
+  // A "compound" is anything you take: a prescription, a supplement, a
+  // peptide. You set it up once (with its schedule), then log each dose.
+  // Backed up like workouts, but private: friends can never see these.
+  `
+  CREATE TABLE compounds (
+    id              TEXT PRIMARY KEY NOT NULL,
+    name            TEXT NOT NULL,
+    kind            TEXT NOT NULL,              -- 'rx' | 'supplement' | 'peptide' | 'other'
+    form            TEXT NOT NULL,              -- 'pill' | 'injection' | 'powder' | 'liquid' | 'topical' | 'other'
+    unit            TEXT NOT NULL,              -- what amounts are in: 'mg', 'mcg', 'IU', ...
+    default_amount  REAL,                       -- your usual dose, pre-filled when logging
+    schedule        TEXT NOT NULL DEFAULT 'daily', -- 'daily' | 'days' | 'every_n' | 'as_needed'
+    schedule_days   TEXT NOT NULL DEFAULT '[]', -- JSON weekdays for 'days', 0 = Sunday, e.g. [1,3,5]
+    every_n         INTEGER,                    -- for 'every_n': every 2, 3, ... days
+    times           TEXT NOT NULL DEFAULT '["08:00"]', -- JSON list of "HH:MM", one per dose that day
+    started_at      INTEGER NOT NULL,           -- "every N days" counts from this day
+    ended_at        INTEGER,                    -- set when you mark it finished; NULL = active
+    notes           TEXT,
+    created_at      INTEGER NOT NULL
+  );
+
+  CREATE TABLE doses (
+    id           TEXT PRIMARY KEY NOT NULL,
+    compound_id  TEXT NOT NULL REFERENCES compounds(id) ON DELETE CASCADE,
+    amount       REAL,                          -- NULL if you just ticked it off
+    unit         TEXT NOT NULL,                 -- copied from the compound, so old doses keep their unit
+    taken_at     INTEGER NOT NULL,
+    site         TEXT,                          -- injection site, e.g. 'Left abdomen'
+    notes        TEXT
+  );
+
+  CREATE INDEX idx_doses_compound_taken ON doses(compound_id, taken_at);
+  CREATE INDEX idx_doses_taken          ON doses(taken_at);
+
+  -- Same change tracking as version 4. These tables are brand new (empty),
+  -- so unlike v4 there's nothing old to upload and no full backup is needed.
+  CREATE TRIGGER sync_compounds_insert AFTER INSERT ON compounds
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('compounds', NEW.id, 0); END;
+  CREATE TRIGGER sync_compounds_update AFTER UPDATE ON compounds
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('compounds', NEW.id, 0); END;
+  CREATE TRIGGER sync_compounds_delete AFTER DELETE ON compounds
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('compounds', OLD.id, 1); END;
+  CREATE TRIGGER sync_doses_insert AFTER INSERT ON doses
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('doses', NEW.id, 0); END;
+  CREATE TRIGGER sync_doses_update AFTER UPDATE ON doses
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('doses', NEW.id, 0); END;
+  CREATE TRIGGER sync_doses_delete AFTER DELETE ON doses
+    BEGIN INSERT INTO sync_changes (tbl, row_id, deleted) VALUES ('doses', OLD.id, 1); END;
+  `,
 ];
 
 export const DATABASE_NAME = 'ferro.db';

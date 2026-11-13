@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { useSyncExternalStore } from 'react';
 
 import { notifyCustomExercisesChanged } from '@/lib/custom-exercises';
+import { notifyMedsChanged } from '@/lib/meds';
 import { loadSettings } from '@/lib/settings';
 import { supabase } from '@/lib/supabase';
 import { notifyWorkoutsChanged } from '@/lib/workouts';
@@ -29,10 +30,19 @@ const TABLES: { name: string; columns: string[] }[] = [
   },
   { name: 'routines', columns: ['id', 'name', 'created_at', 'last_used_at'] },
   { name: 'routine_exercises', columns: ['id', 'routine_id', 'exercise_id', 'position', 'sets'] },
+  // Meds & supplements. Private: the server has no friend access to these (see schema.sql).
+  {
+    name: 'compounds',
+    columns: [
+      'id', 'name', 'kind', 'form', 'unit', 'default_amount', 'schedule', 'schedule_days',
+      'every_n', 'times', 'started_at', 'ended_at', 'notes', 'created_at',
+    ],
+  },
+  { name: 'doses', columns: ['id', 'compound_id', 'amount', 'unit', 'taken_at', 'site', 'notes'] },
 ];
 
 /** Settings that get backed up (not the sync bookkeeping below). */
-const SYNCED_SETTINGS = ['weightUnit', 'restSec', 'theme'];
+const SYNCED_SETTINGS = ['weightUnit', 'restSec', 'theme', 'showMedsTab'];
 /** Bookkeeping, stored in the local settings table. */
 const KEY_SYNC_USER = 'sync.userId';
 const KEY_LAST_SYNC = 'sync.lastAt';
@@ -175,6 +185,7 @@ async function pull(db: SQLiteDatabase, userId: string) {
   if (added > 0) {
     notifyWorkoutsChanged();
     notifyCustomExercisesChanged();
+    notifyMedsChanged();
   }
 }
 

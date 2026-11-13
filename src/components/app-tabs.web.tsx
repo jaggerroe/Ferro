@@ -15,8 +15,10 @@ import { ThemedView } from './themed-view';
 
 import { Colors, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useSettings } from '@/lib/settings';
 
 export default function AppTabs() {
+  const { showMedsTab } = useSettings();
   return (
     <Tabs>
       <TabSlot style={{ height: '100%' }} />
@@ -31,9 +33,16 @@ export default function AppTabs() {
           <TabTrigger name="progress" href="/progress" asChild>
             <TabButton>Progress</TabButton>
           </TabTrigger>
-          <TabTrigger name="routines" href="/routines" asChild>
-            <TabButton>Routines</TabButton>
-          </TabTrigger>
+          {/* Meds takes Routines' spot when it's turned on (see app-tabs.tsx). */}
+          {showMedsTab ? (
+            <TabTrigger name="meds" href="/meds" asChild>
+              <TabButton>Meds</TabButton>
+            </TabTrigger>
+          ) : (
+            <TabTrigger name="routines" href="/routines" asChild>
+              <TabButton>Routines</TabButton>
+            </TabTrigger>
+          )}
           <TabTrigger name="friends" href="/friends" asChild>
             <TabButton>Friends</TabButton>
           </TabTrigger>

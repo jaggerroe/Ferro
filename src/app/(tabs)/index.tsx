@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
 
 import { PlaceholderCard } from '@/components/placeholder-card';
+import { RoutineList, useNewRoutine } from '@/components/routine-list';
 import { Screen } from '@/components/screen';
 import { ThemedText } from '@/components/themed-text';
 import { ThemedView } from '@/components/themed-view';
@@ -11,6 +12,7 @@ import { Spacing } from '@/constants/theme';
 import { useStartRoutine } from '@/hooks/use-start-routine';
 import { useTheme } from '@/hooks/use-theme';
 import { useRoutines } from '@/lib/routines';
+import { useSettings } from '@/lib/settings';
 import { formatDuration, startWorkout, useActiveWorkout } from '@/lib/workouts';
 
 export default function WorkoutScreen() {
@@ -19,6 +21,10 @@ export default function WorkoutScreen() {
   const active = useActiveWorkout();
   const routines = useRoutines();
   const startRoutine = useStartRoutine();
+  const newRoutine = useNewRoutine();
+  // When the Meds tab is on, it takes the Routines tab's spot, so all your
+  // routines show here instead (even during a workout, so you can still edit them).
+  const { showMedsTab } = useSettings();
   const [starting, setStarting] = useState(false);
   // Up to 3 routines that have exercises, most recently used first.
   const quickRoutines = (routines ?? []).filter((r) => r.exercises.length > 0).slice(0, 3);
@@ -58,7 +64,7 @@ export default function WorkoutScreen() {
         </Pressable>
       ) : (
         <>
-          {quickRoutines.length > 0 ? (
+          {showMedsTab ? null : quickRoutines.length > 0 ? (
             <View style={styles.routines}>
               <View style={styles.routinesHeader}>
                 <ThemedText type="smallBold" themeColor="textSecondary" style={styles.eyebrow}>
@@ -123,6 +129,20 @@ export default function WorkoutScreen() {
         ]}>
         <ThemedText style={styles.secondaryLabel}>Browse exercises</ThemedText>
       </Pressable>
+
+      {showMedsTab && routines ? (
+        <View style={styles.routines}>
+          <View style={styles.routinesHeader}>
+            <ThemedText style={styles.sectionTitle}>Routines</ThemedText>
+            <Pressable onPress={newRoutine} accessibilityRole="button" hitSlop={8}>
+              <ThemedText type="smallBold" themeColor="accent">
+                + New routine
+              </ThemedText>
+            </Pressable>
+          </View>
+          <RoutineList routines={routines} />
+        </View>
+      ) : null}
     </Screen>
   );
 }
@@ -147,6 +167,7 @@ const styles = StyleSheet.create({
   routinesHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   routineRow: { borderRadius: 14, padding: Spacing.three, flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   routineName: { fontSize: 17, lineHeight: 22, fontWeight: 700 },
+  sectionTitle: { fontSize: 22, lineHeight: 28, fontWeight: 800, marginTop: Spacing.two },
   activeCard: {
     borderRadius: 16,
     borderWidth: 1.5,

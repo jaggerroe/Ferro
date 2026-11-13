@@ -41,6 +41,9 @@ export default function RootLayout() {
           <Stack.Screen name="workouts/[id]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="exercise-progress/[id]" options={{ presentation: 'modal' }} />
           <Stack.Screen name="routine/[id]" options={{ presentation: 'modal' }} />
+          {/* Meds tab: add/edit something you take, and log a dose. */}
+          <Stack.Screen name="compound" options={{ presentation: 'modal' }} />
+          <Stack.Screen name="log-dose" options={{ presentation: 'modal' }} />
         </Stack>
       </SQLiteProvider>
     </ThemeProvider>

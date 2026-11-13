@@ -20,9 +20,15 @@ export type Settings = {
   /** Default rest time in seconds, or null for "No limit". */
   restSec: number | null;
   theme: ThemePreference;
+  /**
+   * Show the Meds tab (meds & supplements tracking). Off by default, since
+   * most people use Ferro just for lifting. When it's on, the Meds tab takes
+   * Routines' place and your routines move into the Workout tab.
+   */
+  showMedsTab: boolean;
 };
 
-const DEFAULTS: Settings = { weightUnit: 'lb', restSec: 120, theme: 'system' };
+const DEFAULTS: Settings = { weightUnit: 'lb', restSec: 120, theme: 'system', showMedsTab: false };
 
 let state: Settings = DEFAULTS;
 const listeners = new Set<() => void>();
@@ -74,6 +80,7 @@ function pickValid(s: Partial<Settings>): Partial<Settings> {
   if (s.weightUnit === 'lb' || s.weightUnit === 'kg') out.weightUnit = s.weightUnit;
   if (s.restSec === null || (typeof s.restSec === 'number' && s.restSec > 0)) out.restSec = s.restSec;
   if (s.theme === 'system' || s.theme === 'light' || s.theme === 'dark') out.theme = s.theme;
+  if (typeof s.showMedsTab === 'boolean') out.showMedsTab = s.showMedsTab;
   return out;
 }
 

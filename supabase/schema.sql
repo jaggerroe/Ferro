@@ -18,6 +18,9 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+-- Makes "usernames starting with …" searches fast even with lots of users.
+create index if not exists profiles_username_prefix_idx on public.profiles (username text_pattern_ops);
+
 -- Who can see which profiles is set in the Friends section further down
 -- (you, plus people you're connected to), because it needs the friendships
 -- table. This used to let every signed-in user list every username.
@@ -40,6 +43,9 @@ begin
   return new;
 end;
 $$;
+
+-- Only the sign-up trigger runs this; nobody should be able to call it directly.
+revoke execute on function public.handle_new_user() from public, anon, authenticated;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -260,6 +266,50 @@ begin
     if not exists (select 1 from pg_constraint where conname = rule[2]) then
       execute format('alter table public.%I add constraint %I check (%s) not valid', rule[1], rule[2], rule[3]);
     end if;
+  end loop;
+end;
+$$;
+
+-- 4. A ceiling on how many rows one account can store, so a single account
+--    can't fill up the database (Supabase's free plan has a size limit).
+--    The numbers are many years of heavy training: 500,000 sets is about
+--    30 sets a day, every day, for 45 years.
+--    It checks once per save (not once per row), after the rows are added.
+create or replace function public.enforce_row_cap()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+declare
+  cap bigint := tg_argv[0]::bigint;
+  account uuid;
+  total bigint;
+begin
+  for account in select distinct user_id from new_rows loop
+    execute format('select count(*) from %I.%I where user_id = $1', tg_table_schema, tg_table_name)
+      into total using account;
+    if total > cap then
+      raise exception 'This account has too many % saved (limit %).', replace(tg_table_name, '_', ' '), cap;
+    end if;
+  end loop;
+  return null;
+end;
+$$;
+revoke execute on function public.enforce_row_cap() from public, anon, authenticated;
+
+do $$
+declare
+  rule text[];
+begin
+  foreach rule slice 1 in array array[
+    ['custom_exercises', '2000'], ['workouts', '50000'], ['workout_exercises', '300000'],
+    ['sets', '500000'], ['routines', '1000'], ['routine_exercises', '20000'], ['user_settings', '100']
+  ]
+  loop
+    execute format('drop trigger if exists row_cap on public.%I', rule[1]);
+    execute format(
+      'create trigger row_cap after insert on public.%I referencing new table as new_rows '
+      'for each statement execute function public.enforce_row_cap(%L)', rule[1], rule[2]);
   end loop;
 end;
 $$;
@@ -522,6 +572,9 @@ declare
 begin
   if me is null then raise exception 'Not signed in'; end if;
   if other = me then raise exception 'You can''t block yourself'; end if;
+  if (select count(*) from public.blocks where blocker_id = me) >= 1000 then
+    raise exception 'You''ve blocked 1,000 accounts. Unblock some first.';
+  end if;
   delete from public.friendships
   where (requester_id = me and addressee_id = other) or (requester_id = other and addressee_id = me);
   insert into public.blocks (blocker_id, blocked_id) values (me, other) on conflict do nothing;
@@ -769,6 +822,110 @@ begin
   loop
     execute format('revoke execute on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- Meds & supplements (the optional Meds tab). Added Nov 10, 2026.
+--
+-- PRIVATE: only "Own rows only" below. There are deliberately NO friend
+-- policies on these tables and they're not in friend_feed, so friends can
+-- never see what you take. Don't add friend access here.
+-- ---------------------------------------------------------------------------
+create table if not exists public.compounds (
+  id              text not null,
+  user_id         uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name            text not null,
+  kind            text not null,
+  form            text not null,
+  unit            text not null,
+  default_amount  double precision,
+  schedule        text not null default 'daily',
+  schedule_days   text not null default '[]',
+  every_n         integer,
+  times           text not null default '["08:00"]',
+  started_at      bigint not null,
+  ended_at        bigint,
+  notes           text,
+  created_at      bigint not null,
+  primary key (user_id, id)
+);
+
+create table if not exists public.doses (
+  id           text not null,
+  user_id      uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  compound_id  text not null,
+  amount       double precision,
+  unit         text not null,
+  taken_at     bigint not null,
+  site         text,
+  notes        text,
+  primary key (user_id, id),
+  -- A dose must belong to one of YOUR compounds, and goes when it's deleted.
+  constraint doses_compound_fk foreign key (user_id, compound_id)
+    references public.compounds (user_id, id) on delete cascade
+);
+
+create index if not exists doses_compound_idx on public.doses (user_id, compound_id);
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['compounds', 'doses']
+  loop
+    execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists "Own rows only" on public.%I', t);
+    execute format(
+      'create policy "Own rows only" on public.%I for all to authenticated '
+      'using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()))', t);
+  end loop;
+end;
+$$;
+
+-- Limits, like the other tables. Kinds, forms and units are checked by
+-- length only, so adding a new choice in the app later can't break backups.
+-- Amount boxes allow 9 characters, so any typo stays under these caps.
+do $$
+declare
+  rule text[];
+begin
+  foreach rule slice 1 in array array[
+    ['compounds', 'compounds_limits',
+      $c$char_length(id) <= 64 and char_length(name) between 1 and 60
+        and char_length(kind) <= 20 and char_length(form) <= 20 and char_length(unit) <= 20
+        and (default_amount is null or default_amount between 0 and 1000000000)
+        and char_length(schedule) <= 20 and char_length(schedule_days) <= 100
+        and (every_n is null or every_n between 1 and 366)
+        and char_length(times) <= 200 and char_length(coalesce(notes, '')) <= 2000
+        and started_at > 0 and created_at > 0$c$],
+    ['doses', 'doses_limits',
+      $c$char_length(id) <= 64 and char_length(compound_id) <= 64
+        and (amount is null or amount between 0 and 1000000000)
+        and char_length(unit) <= 20 and taken_at > 0
+        and char_length(coalesce(site, '')) <= 40 and char_length(coalesce(notes, '')) <= 2000$c$]
+  ]
+  loop
+    if not exists (select 1 from pg_constraint where conname = rule[2]) then
+      execute format('alter table public.%I add constraint %I check (%s)', rule[1], rule[2], rule[3]);
+    end if;
+  end loop;
+end;
+$$;
+
+-- Row caps (enforce_row_cap is defined above). 200,000 doses is about
+-- 10 a day for 50 years.
+do $$
+declare
+  rule text[];
+begin
+  foreach rule slice 1 in array array[['compounds', '1000'], ['doses', '200000']]
+  loop
+    execute format('drop trigger if exists row_cap on public.%I', rule[1]);
+    execute format(
+      'create trigger row_cap after insert on public.%I referencing new table as new_rows '
+      'for each statement execute function public.enforce_row_cap(%L)', rule[1], rule[2]);
   end loop;
 end;
 $$;

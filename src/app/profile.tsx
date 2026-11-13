@@ -113,6 +113,13 @@ export default function ProfileScreen() {
             <Chip label="Light" selected={settings.theme === 'light'} onPress={() => set('theme', 'light')} />
             <Chip label="Dark" selected={settings.theme === 'dark'} onPress={() => set('theme', 'dark')} />
           </SettingRow>
+
+          <SettingRow
+            label="Meds & supplements"
+            hint="Adds a Meds tab to track what you take. Only you can see it. Your routines move to the Workout tab to make room.">
+            <Chip label="Off" selected={!settings.showMedsTab} onPress={() => set('showMedsTab', false)} />
+            <Chip label="Show Meds tab" selected={settings.showMedsTab} onPress={() => set('showMedsTab', true)} />
+          </SettingRow>
         </Section>
 
         {session ? (
